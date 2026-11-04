@@ -1,0 +1,14 @@
+line-length = 120
+target-version = "py39"
+
+[lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501", "UP006", "UP007", "UP035", "UP045", "B905"]
+
+[lint.per-file-ignores]
+# Slicer modules follow Slicer's camelCase naming conventions.
+"slicer_extension/**" = ["N"]
+
+[lint.isort]
+known-first-party = ["aortaplan_core", "AortaPlanLib"]
+known-third-party = ["slicer", "vtk", "qt", "ctk"]

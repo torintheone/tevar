@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aortaplan-core"
+description = "Slicer-independent math for TEVAR/EVAR/FEVAR planning (research use only)"
+requires-python = ">=3.9"
+dependencies = ["numpy>=1.21", "scipy>=1.7", "vtk>=9.1"]
+dynamic = ["version"]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[tool.setuptools.dynamic]
+version = { attr = "aortaplan_core.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["aortaplan_core*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"

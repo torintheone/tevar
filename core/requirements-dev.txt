@@ -1,0 +1,6 @@
+# Core dependencies (Slicer already bundles numpy, scipy and vtk)
+numpy>=1.21
+scipy>=1.7
+vtk>=9.1
+# Test tools
+pytest>=7

@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+build/
+dist/
+
+# Data: never commit volumes. Phantoms are generated, public data are placed by the user.
+data/phantoms/*
+!data/phantoms/README.md
+data/public/*
+!data/public/README.md
+*.nrrd
+*.nhdr
+*.nii
+*.nii.gz
+*.dcm
+*.mrb
+*.stl
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
