@@ -21,7 +21,7 @@
   через `PythonSlicer.exe`. Git нужен, чтобы получать обновления (`git pull`).
 - Claude работает в облачном Linux-контейнере без Slicer: download.slicer.org закрыт сетевой
   политикой. Здесь запускаются только тесты ядра; тесты внутри Slicer запускает пользователь.
-  GitHub Actions гоняет тесты ядра на Windows и Linux (Python 3.9 и 3.12).
+  GitHub Actions гоняет тесты ядра: Windows и Linux с Python 3.12, Windows с Python 3.9.
 
 ## Проверенные факты о Slicer (по исходникам тега v5.12.0)
 
@@ -87,6 +87,9 @@
 - `python scripts/run_tests.py`: 63 теста ядра проходят (Python 3.13, numpy 2.5, scipy 1.18, VTK 9.7);
   тесты Slicer пропущены (Slicer недоступен).
 - `ruff check .` — без замечаний; vermin: синтаксис совместим с Python 3.9.
+- GitHub Actions, первый прогон: ядро проходит на Windows и Linux с Python 3.12, на Windows
+  с Python 3.9; ruff чистый. Задача Ubuntu + Python 3.9 упала на этапе установки Python (на раннерах
+  Ubuntu 26.04 версии 3.9 больше нет) — матрица исправлена.
 - Разовая независимая сверка NRRD с SimpleITK (ITK NrrdImageIO — тот же читатель, что использует
   Slicer): файлы ядра читаются ITK с теми же вокселями и координатами (в т.ч. повёрнутая сетка),
   файлы ITK читаются ядром. SimpleITK в зависимости проекта не добавлен.

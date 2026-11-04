@@ -77,7 +77,7 @@ Slicer ищется автоматически в стандартных пап�
 `Slicer.exe --no-splash --no-main-window --additional-module-paths ... --python-script ...`;
 результат пишется в JSON-файл, потому что на Windows `Slicer.exe` не выводит текст в консоль.
 
-Тесты ядра автоматически запускаются в GitHub Actions на Windows и Linux (Python 3.9 и 3.12)
+Тесты ядра автоматически запускаются в GitHub Actions (Windows и Linux с Python 3.12, Windows с Python 3.9)
 при каждом push.
 
 ## Фантомы

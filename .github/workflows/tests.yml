@@ -10,13 +10,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        # 3.12 = Python of Slicer 5.10/5.12; 3.9 = Slicer 5.8 (compatibility floor)
-        python: ["3.9", "3.12"]
+        # 3.12 = Python of Slicer 5.10/5.12 (the target). 3.9 = Slicer 5.8, kept as the
+        # compatibility floor on Windows only: GitHub's Ubuntu 26.04 runners no longer ship 3.9.
+        include:
+          - { os: windows-latest, python: "3.12" }
+          - { os: ubuntu-latest, python: "3.12" }
+          - { os: windows-latest, python: "3.9" }
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
       - name: Install core requirements
@@ -27,8 +30,8 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - run: python -m pip install ruff
