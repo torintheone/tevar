@@ -71,18 +71,23 @@ scripts\run_tests.bat --slicer-gui    :: плюс тесты режима при
 scripts\run_tests.bat --core-only     :: только ядро
 ```
 
-`run_tests.bat` использует обычный Python (если установлен), а иначе — `PythonSlicer.exe`
-из поставки Slicer. Отдельный Python **не обязателен**; один раз нужно поставить pytest:
+Подготовка (один раз):
 
-```
-"%LOCALAPPDATA%\slicer.org\Slicer 5.12.0\bin\PythonSlicer.exe" -m pip install pytest
-```
+1. Если Slicer установлен **не** в папку по умолчанию (`%LOCALAPPDATA%\slicer.org\`), сообщите
+   скриптам, где он лежит, и откройте новое окно командной строки:
+   ```
+   setx SLICER_EXECUTABLE "E:\Program\3D Slicer 5.12.4\Slicer.exe"
+   ```
+   (`Slicer.exe` лежит в корне папки Slicer, рядом с папками `bin` и `slicer.org`).
+2. Поставить pytest в Python, встроенный в Slicer:
+   ```
+   "E:\Program\3D Slicer 5.12.4\bin\PythonSlicer.exe" -m pip install pytest
+   ```
 
-(подставьте свою версию в имени папки). С обычным Python:
+`run_tests.bat` запускает тесты обычным Python (если установлен), а иначе — `PythonSlicer.exe`
+из поставки Slicer, поэтому отдельный Python **не обязателен**. С обычным Python:
 `python -m pip install -r core\requirements-dev.txt`, затем `python scripts\run_tests.py`.
-
-Slicer ищется автоматически в стандартных папках установки. Другой путь задаётся так:
-`scripts\run_tests.bat --slicer "D:\Slicer 5.12.0\Slicer.exe"` или переменной `SLICER_EXECUTABLE`.
+Путь к Slicer можно передать и разово: `scripts\run_tests.bat --slicer "...\Slicer.exe"`.
 
 Тесты внутри Slicer запускаются командой
 `Slicer.exe --no-splash --no-main-window --additional-module-paths ... --python-script ...`;
