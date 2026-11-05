@@ -113,6 +113,15 @@ class ImageGeometry:
         ijk = np.stack([i, j, k], axis=-1).astype(float)
         return self.ijk_to_ras(ijk.reshape(-1, 3)).reshape(nk, nj, ni, 3)
 
+    def subgrid(self, start_ijk: Sequence[int], dimensions: Sequence[int]) -> ImageGeometry:
+        """Geometry of a box of voxels starting at voxel ``start_ijk`` (i, j, k) of this grid."""
+        return ImageGeometry(
+            dimensions=tuple(int(d) for d in dimensions),  # type: ignore[arg-type]
+            spacing=self.spacing,
+            origin=tuple(self.ijk_to_ras(np.asarray(start_ijk, dtype=float))),  # type: ignore[arg-type]
+            directions=self.directions,
+        )
+
     @property
     def array_shape(self) -> Tuple[int, int, int]:
         """Shape of the numpy array holding this grid: ``(nk, nj, ni)``."""
@@ -173,6 +182,6 @@ class Volume:
         ijk = self.geometry.ras_to_ijk(pts)
         # map_coordinates expects coordinates in array index order (k, j, i).
         coords = ijk[:, ::-1].T
-        values = map_coordinates(self.data.astype(float), coords, order=1, mode="constant", cval=np.nan)
+        values = map_coordinates(self.data, coords, order=1, mode="constant", cval=np.nan, output=np.float64)
         values = np.where(np.isnan(values), outside_value, values)
         return values if np.ndim(ras_points) > 1 else values[0]

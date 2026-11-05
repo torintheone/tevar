@@ -16,7 +16,7 @@ from ..volume import ImageGeometry, Volume
 
 PathLike = Union[str, "os.PathLike[str]"]
 
-TRUTH_SCHEMA_VERSION = 1
+TRUTH_SCHEMA_VERSION = 2  # 2: branches, paths, junctions, objects
 
 
 def ellipse_reference_metrics(semi_axis_a: float, semi_axis_b: float) -> Dict[str, float]:
@@ -93,6 +93,14 @@ class PhantomTruth:
     noise_sigma_hu: float = 0.0
     seed: Optional[int] = None
     core_version: str = __version__
+    #: Branching phantoms: named vessel centerlines {"name", "points", "radius_mm"}.
+    branches: List[Dict[str, Any]] = field(default_factory=list)
+    #: Named paths from the start point to an end point: list of branch names, proximal first.
+    paths: Dict[str, List[str]] = field(default_factory=dict)
+    #: Bifurcations: {"point": [x, y, z], "exclusion_radius_mm": r}; accuracy is not judged inside.
+    junctions: List[Dict[str, Any]] = field(default_factory=list)
+    #: Non-vessel objects (bone, calcifications) for leak tests: {"kind", ...parameters}.
+    objects: List[Dict[str, Any]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.centerline_points = np.asarray(self.centerline_points, dtype=float)
@@ -102,6 +110,20 @@ class PhantomTruth:
     @property
     def centerline_binormals(self) -> np.ndarray:
         return np.cross(self.centerline_tangents, self.centerline_normals)
+
+    def branch(self, name: str) -> Dict[str, Any]:
+        for branch in self.branches:
+            if branch["name"] == name:
+                return branch
+        raise KeyError(name)
+
+    def path_points(self, path_name: str) -> np.ndarray:
+        """Concatenated centerline of a named path (duplicate junction points removed)."""
+        parts = [np.asarray(self.branch(name)["points"], dtype=float) for name in self.paths[path_name]]
+        points = parts[0]
+        for part in parts[1:]:
+            points = np.vstack([points, part[1:] if np.allclose(part[0], points[-1]) else part])
+        return points
 
     def layer(self, name: str) -> TubeLayer:
         for layer in self.layers:
@@ -130,11 +152,22 @@ class PhantomTruth:
             "noise_sigma_hu": float(self.noise_sigma_hu),
             "seed": self.seed,
             "core_version": self.core_version,
+            "branches": [
+                {
+                    "name": b["name"],
+                    "points": np.round(np.asarray(b["points"], dtype=float), 6).tolist(),
+                    "radius_mm": float(b["radius_mm"]),
+                }
+                for b in self.branches
+            ],
+            "paths": {k: list(v) for k, v in self.paths.items()},
+            "junctions": self.junctions,
+            "objects": self.objects,
         }
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> PhantomTruth:
-        if d.get("schema_version") != TRUTH_SCHEMA_VERSION:
+        if d.get("schema_version") not in (1, TRUTH_SCHEMA_VERSION):
             raise ValueError(f"unsupported truth schema version {d.get('schema_version')}")
         cl = d["centerline"]
         return cls(
@@ -152,6 +185,10 @@ class PhantomTruth:
             noise_sigma_hu=d.get("noise_sigma_hu", 0.0),
             seed=d.get("seed"),
             core_version=d.get("core_version", ""),
+            branches=d.get("branches", []),
+            paths=d.get("paths", {}),
+            junctions=d.get("junctions", []),
+            objects=d.get("objects", []),
         )
 
 

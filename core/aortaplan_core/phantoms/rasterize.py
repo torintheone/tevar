@@ -70,21 +70,30 @@ def rasterize_tube_fractions(
         if layer.semi_axis_n.shape != (n_points,):
             raise ValueError(f"layer {layer.name!r}: semi-axes must have one value per centerline point")
 
-    centers = geometry.voxel_centers_ras().reshape(-1, 3)
-    n_vox = len(centers)
+    n_vox = int(np.prod(geometry.array_shape))
     half_diag = 0.5 * float(np.linalg.norm(geometry.spacing))
     max_radius = max(float(max(layer.semi_axis_n.max(), layer.semi_axis_b.max())) for layer in layers)
     max_step = float(np.max(np.linalg.norm(np.diff(pts, axis=0), axis=1))) if n_points > 1 else 0.0
+    reach = max_radius + 2.0 * half_diag + max_step
+    fractions = np.zeros((len(layers), n_vox), dtype=np.float32)
+
+    # Only voxels inside the tube's bounding box can be touched by it.
+    flat_ids = voxels_in_box(geometry, pts.min(axis=0) - reach, pts.max(axis=0) + reach)
+    if len(flat_ids) == 0:
+        return fractions.reshape((len(layers),) + geometry.array_shape)
+    centers = flat_voxel_centers(geometry, flat_ids)
 
     tree = cKDTree(pts)
-    dist, idx = tree.query(centers, distance_upper_bound=max_radius + 2.0 * half_diag + max_step)
-    candidates = np.flatnonzero(np.isfinite(dist))
-    fractions = np.zeros((len(layers), n_vox), dtype=np.float32)
-    if len(candidates) == 0:
+    dist, idx = tree.query(centers, distance_upper_bound=reach)
+    local = np.flatnonzero(np.isfinite(dist))
+    if len(local) == 0:
         return fractions.reshape((len(layers),) + geometry.array_shape)
+    centers = centers[local]
+    candidates = flat_ids[local]
+    idx = idx[local]
 
-    c_idx = idx[candidates]
-    rel = centers[candidates] - pts[c_idx]
+    c_idx = idx
+    rel = centers - pts[c_idx]
     caps = _within_caps(rel, c_idx, tangents, n_points)
     near_end = (c_idx == 0) | (c_idx == n_points - 1)
 
@@ -109,7 +118,7 @@ def rasterize_tube_fractions(
         band_ids = np.flatnonzero(band)
         for start in range(0, len(band_ids), _CHUNK):
             chunk = band_ids[start : start + _CHUNK]
-            sub_points = (centers[candidates[chunk]][:, np.newaxis, :] + sub_offsets[np.newaxis, :, :]).reshape(-1, 3)
+            sub_points = (centers[chunk][:, np.newaxis, :] + sub_offsets[np.newaxis, :, :]).reshape(-1, 3)
             _, sub_idx = tree.query(sub_points)
             sub_rel = sub_points - pts[sub_idx]
             sub_g = _normalized_radius(sub_rel, sub_idx, normals, binormals, layer)
@@ -118,6 +127,63 @@ def rasterize_tube_fractions(
 
         fractions[li, candidates] = layer_fraction
     return fractions.reshape((len(layers),) + geometry.array_shape)
+
+
+def voxels_in_box(geometry: ImageGeometry, ras_min: np.ndarray, ras_max: np.ndarray) -> np.ndarray:
+    """Flat (C-order) indices of the voxels whose centres may lie in an RAS box."""
+    lo, hi = np.asarray(ras_min, dtype=float), np.asarray(ras_max, dtype=float)
+    corners = np.array([[x, y, z] for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])])
+    ijk = geometry.ras_to_ijk(corners)
+    dims = np.array(geometry.dimensions)
+    start = np.clip(np.floor(ijk.min(axis=0)).astype(int), 0, dims - 1)
+    stop = np.clip(np.ceil(ijk.max(axis=0)).astype(int), 0, dims - 1)
+    if np.any(ijk.max(axis=0) < 0) or np.any(ijk.min(axis=0) > dims - 1):
+        return np.zeros(0, dtype=np.int64)
+    i = np.arange(start[0], stop[0] + 1)
+    j = np.arange(start[1], stop[1] + 1)
+    k = np.arange(start[2], stop[2] + 1)
+    kk, jj, ii = np.meshgrid(k, j, i, indexing="ij")
+    ni, nj, _ = geometry.dimensions
+    return ((kk * nj + jj) * ni + ii).ravel().astype(np.int64)
+
+
+def flat_voxel_centers(geometry: ImageGeometry, flat_ids: np.ndarray) -> np.ndarray:
+    """RAS centres of voxels given by flat (C-order) indices."""
+    ni, nj, _ = geometry.dimensions
+    i = flat_ids % ni
+    j = (flat_ids // ni) % nj
+    k = flat_ids // (ni * nj)
+    return geometry.ijk_to_ras(np.stack([i, j, k], axis=1).astype(float))
+
+
+def solid_fraction(
+    geometry: ImageGeometry, inside, ras_min: np.ndarray, ras_max: np.ndarray, supersampling: int = 3
+) -> np.ndarray:
+    """Partial-volume fraction of an arbitrary solid given by ``inside(points) -> bool``.
+
+    Every voxel in the solid's bounding box is supersampled (fine for small objects such as
+    a vertebra or calcifications). Returns a float32 array in array order ``[k, j, i]``.
+    """
+    fraction = np.zeros(int(np.prod(geometry.array_shape)), dtype=np.float32)
+    half_diag = 0.5 * float(np.linalg.norm(geometry.spacing))
+    flat_ids = voxels_in_box(geometry, np.asarray(ras_min) - half_diag, np.asarray(ras_max) + half_diag)
+    if len(flat_ids) == 0:
+        return fraction.reshape(geometry.array_shape)
+    s = int(supersampling)
+    lattice = (np.arange(s) + 0.5) / s - 0.5
+    sub = np.stack(np.meshgrid(lattice, lattice, lattice, indexing="ij"), axis=-1).reshape(-1, 3)
+    offsets = sub @ (geometry.directions * np.asarray(geometry.spacing)[np.newaxis, :]).T
+    for start in range(0, len(flat_ids), _CHUNK):
+        chunk = flat_ids[start : start + _CHUNK]
+        centers = flat_voxel_centers(geometry, chunk)
+        points = (centers[:, np.newaxis, :] + offsets[np.newaxis, :, :]).reshape(-1, 3)
+        fraction[chunk] = inside(points).reshape(len(chunk), -1).mean(axis=1)
+    return fraction.reshape(geometry.array_shape)
+
+
+def paint(image: np.ndarray, fraction: np.ndarray, hu: float) -> np.ndarray:
+    """Painter's algorithm: the object covers ``fraction`` of each voxel with intensity ``hu``."""
+    return image * (1.0 - fraction) + float(hu) * fraction
 
 
 def compose_intensity(fractions: np.ndarray, layer_hu: Sequence[float], background_hu: float) -> np.ndarray:
