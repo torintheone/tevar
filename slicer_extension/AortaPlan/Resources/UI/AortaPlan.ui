@@ -14,6 +14,13 @@
     </widget>
    </item>
    <item>
+    <widget class="QLabel" name="versionLabel">
+     <property name="styleSheet">
+      <string notr="true">color: #777777; padding: 0px 4px;</string>
+     </property>
+    </widget>
+   </item>
+   <item>
     <widget class="QWidget" name="stepButtonsWidget">
      <layout class="QGridLayout" name="stepButtonsLayout">
       <item row="0" column="0">

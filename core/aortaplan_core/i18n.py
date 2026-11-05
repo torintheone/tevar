@@ -21,6 +21,7 @@ _STRINGS: Dict[str, Dict[str, str]] = {
     "ru": {
         "app.name": "AortaPlan",
         "app.window_title": "AortaPlan — только для исследований",
+        "app.version": "AortaPlan {version} · этап {stage}",
         "disclaimer": "Только для исследований. Не для принятия клинических решений.",
         "module.help": (
             "AortaPlan — планирование TEVAR, EVAR и FEVAR/BEVAR по КТ-ангиографии.<br>"
@@ -147,6 +148,7 @@ _STRINGS: Dict[str, Dict[str, str]] = {
     "en": {
         "app.name": "AortaPlan",
         "app.window_title": "AortaPlan — research use only",
+        "app.version": "AortaPlan {version} · stage {stage}",
         "disclaimer": "Research use only. Not for clinical decision making.",
         "module.help": (
             "AortaPlan — TEVAR, EVAR and FEVAR/BEVAR planning on CT angiography.<br>"

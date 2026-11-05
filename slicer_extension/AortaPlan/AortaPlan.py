@@ -81,6 +81,7 @@ STEP_KEYS = [
 PLACEHOLDER_STAGES = {3: 4, 4: 5, 5: 6, 6: 7, 7: 8}
 PRESET_BUTTONS = {"cta": "wlCtaButton", "calcium": "wlCalciumButton", "soft_tissue": "wlSoftTissueButton", "bone": "wlBoneButton"}
 STEP_STUDY, STEP_CENTERLINE = 0, 1
+DEVELOPMENT_STAGE = 1  # last implemented stage of SPEC section 8, shown under the disclaimer
 
 
 #
@@ -174,6 +175,9 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """All visible texts come from aortaplan_core.i18n (one place for all UI strings)."""
         ui = self.ui
         ui.disclaimerLabel.text = tr("disclaimer")
+        import aortaplan_core
+
+        ui.versionLabel.text = tr("app.version", version=aortaplan_core.__version__, stage=DEVELOPMENT_STAGE)
         for i, key in enumerate(STEP_KEYS):
             getattr(ui, f"step{i + 1}Button").text = f"{i + 1}. {tr(key)}"
         for page, stage in PLACEHOLDER_STAGES.items():
