@@ -274,18 +274,27 @@ class AortaPlanNavigationTests(unittest.TestCase):
         slicer.mrmlScene.Clear(0)
 
     def test_slices_and_cursor_follow_the_curve(self):
+        from aortaplan_core.centerline.cpr import StraightenedCpr
         from aortaplan_core.centerline.navigation import CurvePath
 
         phantom, volume, curve, navigator = _torusSetup()
         path = CurvePath(slicer.util.arrayFromMarkupsCurvePoints(curve, world=True))
+        cpr = StraightenedCpr(path)
         self.assertAlmostEqual(navigator.path.length, path.length, places=6)
+        images = [slicer.util.arrayFromVolume(view.volumeNode(create=False))[0] for view in navigator.cprViews]
+        np.testing.assert_allclose(images[0], cpr.sample(phantom.volume, 0.0), atol=1e-3)
+        np.testing.assert_allclose(images[1], cpr.sample(phantom.volume, 90.0), atol=1e-3)
         for s in (5.0, path.length / 2.0, path.length - 5.0):
             navigator.setPosition(s)
             cross = slicer.util.arrayFromVTKMatrix(navigator.crossNode.GetSliceToRAS())
             np.testing.assert_allclose(cross, path.cross_section_frame(s).slice_to_ras(), atol=1e-6)
-            longitudinal = slicer.util.arrayFromVTKMatrix(navigator.longitudinalNode.GetSliceToRAS())
-            np.testing.assert_allclose(longitudinal, path.longitudinal_frame(s, 0.0).slice_to_ras(), atol=1e-6)
             np.testing.assert_allclose(_cursorPosition(navigator), path.point_at(s), atol=1e-6)
+            for view in navigator.cprViews:  # horizontal position line at the row of s
+                line = slicer.util.arrayFromMarkupsControlPoints(view.positionLine(), world=True)
+                _, row = cpr.cpr_to_pixel(0.0, s)
+                np.testing.assert_allclose(line[:, 1], view.origin[1] + row * cpr.row_spacing_mm, atol=1e-6)
+                axis = slicer.util.arrayFromMarkupsControlPoints(navigator.axisLine(view), world=True)
+                self.assertLess(abs(np.dot(axis[1] - axis[0], path.tangent_at(s))), 1e-6)  # in the slice plane
             # The cursor (slice centre) is inside the phantom lumen.
             self.assertGreater(phantom.volume.sample_linear(path.point_at(s)), 250.0)
         navigator.cleanup()
@@ -321,6 +330,30 @@ class AortaPlanNavigationTests(unittest.TestCase):
         target = navigator.path.point_at(60.0) + np.array([3.0, 0.0, 0.0])  # 3 mm off the curve
         self.assertAlmostEqual(navigator.jumpToRas(target), 60.0, delta=0.3)
         self.assertAlmostEqual(navigator.position, 60.0, delta=0.3)
+        navigator.cleanup()
+
+    def test_cpr_rotation_and_pixel_mapping(self):
+        from aortaplan_core.centerline.cpr import StraightenedCpr
+
+        phantom, volume, curve, navigator = _torusSetup()
+        navigator.setAngle(30.0)
+        cpr = StraightenedCpr(navigator.path)
+        first, second = (slicer.util.arrayFromVolume(v.volumeNode(create=False))[0] for v in navigator.cprViews)
+        np.testing.assert_allclose(first, cpr.sample(phantom.volume, 30.0), atol=1e-3)
+        np.testing.assert_allclose(second, cpr.sample(phantom.volume, 120.0), atol=1e-3)
+        view = navigator.cprViews[0]
+        x, y = view.xyFromCpr(2.0, 40.0)
+        offset, s = view.cprFromXY(x, y)
+        self.assertAlmostEqual(offset, 2.0, places=3)
+        self.assertAlmostEqual(s, 40.0, places=3)
+        navigator.jumpToCprPixel(0, x, y)
+        self.assertAlmostEqual(navigator.position, 40.0, places=3)
+        # The CPR pixel and the volume agree: the RAS point of a CPR point has the image value.
+        ras = cpr.to_ras(2.0, 40.0, 30.0)
+        column, row = cpr.cpr_to_pixel(2.0, 40.0)
+        self.assertAlmostEqual(
+            float(first[int(round(row)), int(round(column))]), float(phantom.volume.sample_linear(ras)), delta=40.0
+        )
         navigator.cleanup()
 
     def test_curve_edits_and_standard_views(self):
@@ -375,6 +408,7 @@ class AortaPlanViewTests(unittest.TestCase):
         self.assertEqual(layoutManager.layout, layout.LAYOUT_ID)
         self.assertIsNotNone(layout.sliceWidget(layout.CROSS_VIEW))
         self.assertIsNotNone(layout.sliceWidget(layout.LONGITUDINAL_VIEW))
+        self.assertIsNotNone(layout.sliceWidget(layout.CPR2_VIEW))
         controller.activate(withAxial=True)
         self.assertEqual(layoutManager.layout, layout.LAYOUT_WITH_AXIAL_ID)
         controller.deactivate()
@@ -430,18 +464,29 @@ class AortaPlanViewTests(unittest.TestCase):
         cross.InvokeEvent(vtk.vtkCommand.KeyPressEvent)
         self.assertAlmostEqual(navigator.position, 45.0, places=3)
 
-        # Click in the longitudinal view on the curve point at 30 mm.
-        target = navigator.path.point_at(30.0)
-        longitudinal = layout.sliceWidget(layout.LONGITUDINAL_VIEW).sliceView().interactor()
-        navigator.setPosition(30.0)  # the target must lie in the displayed plane
-        rasToXy = vtk.vtkMatrix4x4()
-        vtk.vtkMatrix4x4.Invert(navigator.longitudinalNode.GetXYToRAS(), rasToXy)
-        navigator.position = 0.0  # move away without re-slicing, then click back
-        x, y = rasToXy.MultiplyPoint([*target, 1.0])[:2]
-        longitudinal.SetEventInformation(int(round(x)), int(round(y)), 0, 0)
-        longitudinal.InvokeEvent(vtk.vtkCommand.LeftButtonPressEvent)
-        longitudinal.InvokeEvent(vtk.vtkCommand.LeftButtonReleaseEvent)
+        # CPR view: press at 30 mm, drag to 60 mm, release.
+        view = navigator.cprViews[0]
+        cpr = layout.sliceWidget(layout.LONGITUDINAL_VIEW).sliceView().interactor()
+        x, y = view.xyFromCpr(0.0, 30.0)
+        cpr.SetEventInformation(int(round(x)), int(round(y)), 0, 0)
+        cpr.InvokeEvent(vtk.vtkCommand.LeftButtonPressEvent)
         self.assertAlmostEqual(navigator.position, 30.0, delta=1.5)
+        x, y = view.xyFromCpr(0.0, 60.0)
+        cpr.SetEventInformation(int(round(x)), int(round(y)), 0, 0)
+        cpr.InvokeEvent(vtk.vtkCommand.MouseMoveEvent)
+        self.assertAlmostEqual(navigator.position, 60.0, delta=1.5)
+        cpr.InvokeEvent(vtk.vtkCommand.LeftButtonReleaseEvent)
+        x, y = view.xyFromCpr(0.0, 90.0)
+        cpr.SetEventInformation(int(round(x)), int(round(y)), 0, 0)
+        cpr.InvokeEvent(vtk.vtkCommand.MouseMoveEvent)  # no button: no change
+        self.assertAlmostEqual(navigator.position, 60.0, delta=1.5)
+        # Wheel in the CPR view moves; Ctrl+wheel rotates.
+        cpr.InvokeEvent(vtk.vtkCommand.MouseWheelForwardEvent)
+        self.assertAlmostEqual(navigator.position, 61.0, delta=1.5)
+        angle = navigator.angle
+        cpr.SetEventInformation(int(round(x)), int(round(y)), 1, 0)  # Ctrl
+        cpr.InvokeEvent(vtk.vtkCommand.MouseWheelForwardEvent)
+        self.assertAlmostEqual(navigator.angle, (angle + 5.0) % 360.0)
 
         # Click on the curve in the 3D view.
         threeDView = layout.threeDWidget().threeDView()

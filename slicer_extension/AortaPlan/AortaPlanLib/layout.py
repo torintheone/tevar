@@ -15,7 +15,9 @@ except ImportError:
         return key
 
 
-LONGITUDINAL_VIEW = "AortaPlanCPR"
+LONGITUDINAL_VIEW = "AortaPlanCPR"  # straightened CPR at the current angle
+CPR2_VIEW = "AortaPlanCPR2"  # straightened CPR at angle + 90 deg
+CPR_VIEWS = (LONGITUDINAL_VIEW, CPR2_VIEW)
 CROSS_VIEW = "AortaPlanCross"
 AXIAL_VIEW = "Red"
 
@@ -40,8 +42,10 @@ def _sliceXml(tag, orientation, label, color):
 
 
 def layoutXml(withAxial=False):
-    longitudinal = _sliceXml(LONGITUDINAL_VIEW, "Reformat", tr("view.label.longitudinal"), "#D9A13A")
-    cross = _sliceXml(CROSS_VIEW, "Reformat", tr("view.label.cross"), "#3AA6D9")
+    """Two CPR views side by side on the left; perpendicular slice, (axial) and 3D on the right."""
+    cpr1 = _sliceXml(LONGITUDINAL_VIEW, "Reformat", tr("view.label.cpr1"), "#D9A13A")
+    cpr2 = _sliceXml(CPR2_VIEW, "Reformat", tr("view.label.cpr2"), "#3AA6D9")
+    cross = _sliceXml(CROSS_VIEW, "Reformat", tr("view.label.cross"), "#8C8C8C")
     rightItems = [cross]
     if withAxial:
         rightItems.append(_sliceXml(AXIAL_VIEW, "Axial", "R", "#F34A33"))
@@ -49,7 +53,8 @@ def layoutXml(withAxial=False):
     right = "".join(f"<item>{x}</item>" for x in rightItems)
     return (
         '<layout type="horizontal" split="true">'
-        f'<item splitSize="600">{longitudinal}</item>'
+        f'<item splitSize="300">{cpr1}</item>'
+        f'<item splitSize="300">{cpr2}</item>'
         f'<item splitSize="400"><layout type="vertical" split="true">{right}</layout></item>'
         "</layout>"
     )

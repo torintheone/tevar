@@ -116,8 +116,11 @@ _STRINGS: Dict[str, Dict[str, str]] = {
         # Views and layout
         "layout.show_axial": "Показать аксиальный срез",
         "view.label.longitudinal": "CPR",
+        "view.label.cpr1": "CPR 1",
+        "view.label.cpr2": "CPR 2",
         "view.label.cross": "⊥",
         "view.position": "{value:.1f} мм",
+        "view.angle": "{angle:.0f}°",
         "view.position_angle": "{value:.1f} мм   {angle:.0f}°",
         # Step 2: centerline
         "centerline.curve": "Кривая:",
@@ -138,9 +141,10 @@ _STRINGS: Dict[str, Dict[str, str]] = {
         "nav.position_of": "{value:.1f} мм из {length:.1f} мм",
         "nav.no_curve": "Нет кривой: нарисуйте её на шаге «Центральная линия».",
         "nav.help": (
-            "Колесо мыши или ↑/↓ в срезе или CPR: ±1 мм (с Shift ±5 мм). "
-            "Ctrl+↑/↓: ±1 мм, Ctrl+←/→: поворот CPR на ±10°. "
-            "Клик в CPR или по кривой в 3D переносит срез в эту точку."
+            "CPR: левая кнопка — тянуть положение (клик — перейти); колесо ±1 мм, Shift+колесо ±5 мм; "
+            "Ctrl+колесо — поворот CPR на ±5°; масштаб — правая кнопка. "
+            "Перпендикулярный срез: колесо или ↑/↓ ±1 мм (с Shift ±5 мм). "
+            "Ctrl+↑/↓: ±1 мм, Ctrl+←/→: поворот на ±10°. Клик по линии в 3D — перейти к точке."
         ),
         "units.mm": "мм",
         "units.deg": "°",
@@ -297,8 +301,11 @@ _STRINGS: Dict[str, Dict[str, str]] = {
         "wl.tooltip": "Window {window:.0f} HU, level {level:.0f} HU",
         "layout.show_axial": "Show axial slice",
         "view.label.longitudinal": "CPR",
+        "view.label.cpr1": "CPR 1",
+        "view.label.cpr2": "CPR 2",
         "view.label.cross": "⊥",
         "view.position": "{value:.1f} mm",
+        "view.angle": "{angle:.0f}°",
         "view.position_angle": "{value:.1f} mm   {angle:.0f}°",
         "centerline.curve": "Curve:",
         "centerline.draw": "Draw curve",
@@ -317,9 +324,10 @@ _STRINGS: Dict[str, Dict[str, str]] = {
         "nav.position_of": "{value:.1f} mm of {length:.1f} mm",
         "nav.no_curve": "No curve: draw one in the Centerline step.",
         "nav.help": (
-            "Mouse wheel or Up/Down in the slice or CPR view: ±1 mm (with Shift ±5 mm). "
-            "Ctrl+Up/Down: ±1 mm, Ctrl+Left/Right: rotate CPR by ±10°. "
-            "Click in the CPR view or on the curve in 3D to move the slice there."
+            "CPR: left button — drag the position (click — jump); wheel ±1 mm, Shift+wheel ±5 mm; "
+            "Ctrl+wheel — rotate CPR by ±5°; zoom — right button. "
+            "Perpendicular slice: wheel or Up/Down ±1 mm (with Shift ±5 mm). "
+            "Ctrl+Up/Down: ±1 mm, Ctrl+Left/Right: rotate by ±10°. Click the curve in 3D to jump there."
         ),
         "units.mm": "mm",
         "units.deg": "°",

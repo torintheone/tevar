@@ -66,6 +66,9 @@ Full specification: `SPEC.md` (Russian). Status: `PROGRESS.md`. Re-read both bef
 - Lumen (stage 2, `lumen/segmentation.py`): lower threshold = 50 % level between soft tissue and contrast
   (boundary at the true wall), opening against leaks, ROI grows until seeds connect. Centerline
   (`centerline/extraction.py`): minimal path 1/D^2 + half-max ray recentering; VMTK is the alternative.
+- CPR (stage 3, `centerline/cpr.py`): straightened, rows = arc length (0.5 mm), lateral lines from a
+  rotation-minimizing frame (angle 0 = patient left at the proximal end); two views at angle and +90°.
+  In Slicer each CPR image is a volume placed far above the patient (z = 50 000 / 60 000 mm).
 - Lengths: along the centerline (primary); along greater/lesser curvature (from wall contour points);
   straight distance only as a secondary value.
 - Diameters per cross-section: min/max Feret (rotating calipers), mean, area-equivalent `2√(A/π)`,

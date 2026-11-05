@@ -82,7 +82,7 @@ STEP_KEYS = [
 PLACEHOLDER_STAGES = {3: 4, 4: 5, 5: 6, 6: 7, 7: 8}
 PRESET_BUTTONS = {"cta": "wlCtaButton", "calcium": "wlCalciumButton", "soft_tissue": "wlSoftTissueButton", "bone": "wlBoneButton"}
 STEP_STUDY, STEP_CENTERLINE = 0, 1
-DEVELOPMENT_STAGE = 2  # last implemented stage of SPEC section 8, shown under the disclaimer
+DEVELOPMENT_STAGE = 3  # last implemented stage of SPEC section 8, shown under the disclaimer
 
 
 #
