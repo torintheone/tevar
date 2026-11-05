@@ -101,3 +101,17 @@ def test_metrics():
     dev = centerline_deviation(np.array([[5, 1, 0], [9, 5, 0]]), line, exclusions=[([10, 5, 0], 2.0)])
     assert dev["count"] == 1 and dev["max_mm"] == pytest.approx(1.0)
     assert coverage(line, line[:2], tolerance_mm=0.5) == pytest.approx(2 / 3)
+
+
+def test_end_in_erased_lumen_is_unreachable(aortoiliac_phantom):
+    from aortaplan_core.lumen import lumen_from_mask
+
+    start, ends = suggested_seeds(aortoiliac_phantom.truth)
+    g = aortoiliac_phantom.volume.geometry
+    lumen = segment_lumen(aortoiliac_phantom.volume, start, ends)
+    mask = lumen.full_mask(g)
+    mask[:, :, mask.shape[2] // 2 + 8 :] = False  # erase the left iliac (high i = patient left)
+    edited = lumen_from_mask(mask, g, lumen.start, lumen.ends, lumen.hu_range, lumen.lumen_hu)
+    network = extract_centerlines(aortoiliac_phantom.volume, edited, CenterlineParameters(refine_iterations=1))
+    assert [p.side for p in network.paths] == ["right"]
+    assert network.warnings == ["end_unreachable:1"]

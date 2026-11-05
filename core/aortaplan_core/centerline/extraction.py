@@ -313,14 +313,22 @@ def extract_centerlines(
     index = -np.ones(graph_mask.shape, dtype=np.int64)
     index.flat[nodes] = np.arange(len(nodes))
 
+    # A seed may be at most this far from the lumen (e.g. after the lumen was erased by hand).
+    tolerance = max(3.0, 2.0 * factor * float(np.max(spacing_kji)))
+
     def node_of(ras: np.ndarray) -> int:
         kji = geometry.ras_to_ijk(ras)[::-1] / factor
         voxel = _nearest_mask_voxel(graph_mask, kji)
-        return -1 if voxel is None else int(index[tuple(voxel)])
+        if voxel is None:
+            return -1
+        voxel_ras = geometry.ijk_to_ras((voxel * factor)[::-1].astype(float))
+        if np.linalg.norm(voxel_ras - np.asarray(ras, float)) > tolerance:
+            return -1
+        return int(index[tuple(voxel)])
 
     start_node = node_of(lumen.start)
     if start_node < 0:
-        raise ValueError("the lumen mask is empty")
+        raise ValueError("the start point is outside the lumen")
     _check(progress, 0.45, "centerline.paths")
     _, predecessors = dijkstra(graph, directed=False, indices=start_node, return_predecessors=True)
 

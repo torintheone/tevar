@@ -5,8 +5,9 @@ from .segmentation import (
     LumenParameters,
     LumenResult,
     estimate_hu_range,
+    lumen_from_mask,
     segment_lumen,
     snap_seed,
 )
 
-__all__ = ["Cancelled", "LumenParameters", "LumenResult", "estimate_hu_range", "segment_lumen", "snap_seed"]
+__all__ = ["Cancelled", "LumenParameters", "LumenResult", "estimate_hu_range", "lumen_from_mask", "segment_lumen", "snap_seed"]

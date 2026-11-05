@@ -118,6 +118,10 @@ def run_slicer_tests(slicer, gui, timeout):
         if test["status"] in ("failed", "error") or (test["status"] == "skipped" and test["message"]):
             for line in test["message"].rstrip().splitlines():
                 print(f"           {line}")
+    if report.get("metrics"):
+        print("Measurements:")
+        for key, value in sorted(report["metrics"].items()):
+            print(f"  {key}: {value}")
     if report.get("error"):
         print(report["error"], file=sys.stderr)
     summary = ", ".join(f"{n} {s}" for s, n in sorted(counts.items())) or "no tests ran"

@@ -63,6 +63,9 @@ Full specification: `SPEC.md` (Russian). Status: `PROGRESS.md`. Re-read both bef
 - Cross-section view orientation (stage 1, `centerline/navigation.py`): anterior up, patient's left on
   the right (axial seen from the feet); in degenerate runs (arch top, horizontal vessels) the missing
   direction is carried from the distal side by rotation-minimizing transport. Curves run proximal → distal.
+- Lumen (stage 2, `lumen/segmentation.py`): lower threshold = 50 % level between soft tissue and contrast
+  (boundary at the true wall), opening against leaks, ROI grows until seeds connect. Centerline
+  (`centerline/extraction.py`): minimal path 1/D^2 + half-max ray recentering; VMTK is the alternative.
 - Lengths: along the centerline (primary); along greater/lesser curvature (from wall contour points);
   straight distance only as a secondary value.
 - Diameters per cross-section: min/max Feret (rotating calipers), mean, area-equivalent `2√(A/π)`,

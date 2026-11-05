@@ -80,6 +80,7 @@ def main():
         result = runner.run(suite)
         report["tests"] = result.records
         report["log"] = stream.getvalue()
+        report["metrics"] = dict(getattr(AortaPlanSlicerTests, "METRICS", {}))
         exitCode = 0 if result.wasSuccessful() else 1
     except Exception:
         report["error"] = traceback.format_exc()

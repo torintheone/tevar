@@ -73,6 +73,7 @@ class SliceNavigator:
         self.longitudinalFieldOfView = 220.0
         self.listeners = []
         self.overlays = {}
+        self.planeIn3D = False
         self._curveObservations = []
 
     # ------------------------------------------------------------------ nodes
@@ -194,6 +195,7 @@ class SliceNavigator:
         setSliceToRAS(self.longitudinalNode, longitudinal.slice_to_ras())
         cursor = self.cursorNode()
         cursor.SetNthControlPointPositionWorld(0, *cross.origin)
+        setSliceVisibleIn3D(self.crossNode, self.planeIn3D)
         self._updateOverlays()
         self._notify()
 
@@ -208,6 +210,7 @@ class SliceNavigator:
         cursor = self.cursorNode(create=False)
         if cursor is not None:
             slicer.mrmlScene.RemoveNode(cursor)
+        setSliceVisibleIn3D(self.crossNode, False)  # no plane over the 3D rendering without a path
         for overlay in self.overlays.values():
             overlay.setText("")
         if self.volumeNode is not None:
@@ -244,7 +247,9 @@ class SliceNavigator:
             )
 
     def showCrossSectionIn3D(self, visible):
-        setSliceVisibleIn3D(self.crossNode, visible)
+        """Show the perpendicular slice in the 3D view (only while navigating along a path)."""
+        self.planeIn3D = bool(visible)
+        setSliceVisibleIn3D(self.crossNode, self.planeIn3D and self.path is not None and not self.frozen)
 
     def _notify(self):
         for listener in list(self.listeners):

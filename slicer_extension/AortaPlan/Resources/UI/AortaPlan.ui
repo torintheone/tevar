@@ -172,15 +172,67 @@
      <widget class="QWidget" name="centerlinePage">
       <layout class="QVBoxLayout" name="centerlineLayout">
        <item>
-        <layout class="QHBoxLayout" name="curveLayout">
+        <widget class="QLabel" name="autoHintLabel">
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="pointButtonsLayout">
          <item>
-          <widget class="QLabel" name="curveLabel" />
+          <widget class="QPushButton" name="startPointButton">
+           <property name="checkable">
+            <bool>true</bool>
+           </property>
+          </widget>
          </item>
          <item>
-          <widget class="qMRMLNodeComboBox" name="curveSelector">
+          <widget class="QPushButton" name="endPointsButton">
+           <property name="checkable">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="stopPointsButton">
+           <property name="checkable">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="pointsInfoLayout">
+         <item>
+          <widget class="QLabel" name="pointsInfoLabel">
+           <property name="wordWrap">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="clearPointsButton" />
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QFormLayout" name="autoFormLayout">
+         <item row="0" column="0">
+          <widget class="QLabel" name="methodLabel" />
+         </item>
+         <item row="0" column="1">
+          <widget class="QComboBox" name="methodComboBox" />
+         </item>
+         <item row="1" column="0">
+          <widget class="QLabel" name="exclusionLabel" />
+         </item>
+         <item row="1" column="1">
+          <widget class="qMRMLNodeComboBox" name="exclusionSelector">
            <property name="nodeTypes">
             <stringlist notr="true">
-             <string>vtkMRMLMarkupsCurveNode</string>
+             <string>vtkMRMLSegmentationNode</string>
             </stringlist>
            </property>
            <property name="showChildNodeTypes">
@@ -203,34 +255,143 @@
         </layout>
        </item>
        <item>
-        <layout class="QHBoxLayout" name="drawLayout">
+        <widget class="QPushButton" name="buildButton">
+         <property name="styleSheet">
+          <string notr="true">font-weight: bold; padding: 6px;</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="buildStatusLabel">
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+         <property name="textFormat">
+          <enum>Qt::RichText</enum>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="pathLayout">
          <item>
-          <widget class="QPushButton" name="drawCurveButton" />
+          <widget class="QLabel" name="pathLabel" />
          </item>
          <item>
-          <widget class="QPushButton" name="finishCurveButton">
-           <property name="enabled">
-            <bool>false</bool>
+          <widget class="QComboBox" name="pathComboBox" />
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="afterBuildLayout">
+         <item>
+          <widget class="QPushButton" name="addBranchButton" />
+         </item>
+         <item>
+          <widget class="QPushButton" name="rebuildCenterlineButton" />
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="showLayout">
+         <item>
+          <widget class="QCheckBox" name="showRenderingCheckBox">
+           <property name="checked">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QCheckBox" name="showLumenCheckBox">
+           <property name="checked">
+            <bool>true</bool>
            </property>
           </widget>
          </item>
         </layout>
        </item>
        <item>
-        <widget class="QPushButton" name="reverseCurveButton" />
-       </item>
-       <item>
-        <widget class="QLabel" name="curveHintLabel">
-         <property name="wordWrap">
+        <widget class="ctkCollapsibleButton" name="editCollapsibleButton">
+         <property name="collapsed">
           <bool>true</bool>
          </property>
+         <layout class="QVBoxLayout" name="editLayout">
+          <item>
+           <widget class="QWidget" name="segmentEditorPlaceholder">
+            <layout class="QVBoxLayout" name="segmentEditorLayout" />
+           </widget>
+          </item>
+         </layout>
         </widget>
        </item>
        <item>
-        <widget class="QLabel" name="curveLengthLabel">
-         <property name="wordWrap">
+        <widget class="ctkCollapsibleButton" name="manualCollapsibleButton">
+         <property name="collapsed">
           <bool>true</bool>
          </property>
+         <layout class="QVBoxLayout" name="manualLayout">
+          <item>
+           <layout class="QHBoxLayout" name="curveLayout">
+            <item>
+             <widget class="QLabel" name="curveLabel" />
+            </item>
+            <item>
+             <widget class="qMRMLNodeComboBox" name="curveSelector">
+              <property name="nodeTypes">
+               <stringlist notr="true">
+                <string>vtkMRMLMarkupsCurveNode</string>
+               </stringlist>
+              </property>
+              <property name="showChildNodeTypes">
+               <bool>false</bool>
+              </property>
+              <property name="addEnabled">
+               <bool>false</bool>
+              </property>
+              <property name="removeEnabled">
+               <bool>false</bool>
+              </property>
+              <property name="noneEnabled">
+               <bool>true</bool>
+              </property>
+              <property name="renameEnabled">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="drawLayout">
+            <item>
+             <widget class="QPushButton" name="drawCurveButton" />
+            </item>
+            <item>
+             <widget class="QPushButton" name="finishCurveButton">
+              <property name="enabled">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QPushButton" name="reverseCurveButton" />
+          </item>
+          <item>
+           <widget class="QLabel" name="curveHintLabel">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="curveLengthLabel">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
         </widget>
        </item>
        <item>

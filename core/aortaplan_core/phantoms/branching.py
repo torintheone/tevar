@@ -180,3 +180,13 @@ def _point_at_z(points: np.ndarray, z: float) -> np.ndarray:
 def suggested_seeds(truth: PhantomTruth) -> Tuple[np.ndarray, List[np.ndarray]]:
     seeds = truth.expected["seeds"]
     return np.asarray(seeds["start"], dtype=float), [np.asarray(e, dtype=float) for e in seeds["ends"]]
+
+
+def _register_standard_phantoms() -> None:
+    from .library import STANDARD_PHANTOMS
+
+    STANDARD_PHANTOMS["aortoiliac"] = lambda: aortoiliac()
+    STANDARD_PHANTOMS["aortoiliac_bone"] = lambda: aortoiliac(with_bone=True, with_calcifications=True)
+
+
+_register_standard_phantoms()

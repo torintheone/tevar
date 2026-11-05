@@ -108,3 +108,18 @@ def test_cancel():
 def test_needs_two_seeds():
     with pytest.raises(ValueError):
         segment_lumen(two_tubes_with_bridge(), [-10, 0, 10], [])
+
+
+def test_lumen_from_edited_mask(aortoiliac_phantom):
+    from aortaplan_core.lumen import lumen_from_mask
+
+    start, ends = suggested_seeds(aortoiliac_phantom.truth)
+    result = segment_lumen(aortoiliac_phantom.volume, start, ends)
+    full = result.full_mask(aortoiliac_phantom.volume.geometry)
+    again = lumen_from_mask(full, aortoiliac_phantom.volume.geometry, result.start, result.ends, result.hu_range, result.lumen_hu)
+    assert again.voxel_count == result.voxel_count and again.connected == [True, True]
+    np.testing.assert_array_equal(again.full_mask(aortoiliac_phantom.volume.geometry), full)
+    edited = full.copy()
+    edited[:, :, : full.shape[2] // 2 - 5] = False  # low i = patient right (CT-like grid): erase the right iliac
+    cut = lumen_from_mask(edited, aortoiliac_phantom.volume.geometry, result.start, result.ends, result.hu_range, result.lumen_hu)
+    assert cut.connected.count(True) == 1

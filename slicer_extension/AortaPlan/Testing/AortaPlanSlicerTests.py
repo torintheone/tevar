@@ -455,3 +455,157 @@ class AortaPlanViewTests(unittest.TestCase):
             slicer.util.forceRenderAllViews()
         perFrame = (time.perf_counter() - start) / len(positions)
         self.assertLess(perFrame, 1.0 / 15.0, f"{perFrame * 1000:.1f} ms per update")
+
+
+# ---------------------------------------------------------------------------- stage 2
+
+#: Measurements reported by run_slicer_tests.py (e.g. VMTK vs core centerline accuracy).
+METRICS = {}
+
+
+def _aortoiliacSetup():
+    from aortaplan_core.phantoms.branching import aortoiliac, suggested_seeds
+    from AortaPlanLib.bridge import volumeToNode
+    from AortaPlanLib.centerline import ENDS, START, CenterlineBuilder
+
+    phantom = aortoiliac(with_bone=True, with_calcifications=True)
+    volume = volumeToNode(phantom.volume, "aortoiliac")
+    builder = CenterlineBuilder()
+    start, ends = suggested_seeds(phantom.truth)
+    builder.pointsNode(START).AddControlPoint(*(start + np.array([6.0, 0.0, 0.0])), "")  # a click on the wall
+    for end in ends:
+        builder.pointsNode(ENDS).AddControlPoint(*end, "")
+    return phantom, volume, builder
+
+
+def _boneVoxels(phantom, mask):
+    g = phantom.volume.geometry
+    vertebra = [o for o in phantom.truth.objects if o["kind"] == "vertebra"][0]
+    pts = g.voxel_centers_ras()
+    r = np.hypot(pts[..., 0] - vertebra["axis_point"][0], pts[..., 1] - vertebra["axis_point"][1])
+    zr = vertebra["z_range_mm"]
+    inside = (r < vertebra["radius_mm"] - 1.5) & (pts[..., 2] > zr[0] + 5) & (pts[..., 2] < zr[1] - 5)
+    return int((mask & inside).sum())
+
+
+class AortaPlanCenterlineTests(unittest.TestCase):
+    def setUp(self):
+        slicer.mrmlScene.Clear(0)
+
+    def tearDown(self):
+        slicer.mrmlScene.Clear(0)
+
+    def _buildAndMeasure(self, method):
+        import time
+
+        from aortaplan_core.centerline.metrics import centerline_deviation
+        from AortaPlanLib.centerline import LUMEN_SEGMENT_ID, PATH_ATTRIBUTE
+
+        phantom, volume, builder = _aortoiliacSetup()
+        start = time.perf_counter()
+        curves = builder.build(volume, method)
+        METRICS[f"{method}: build time, s"] = round(time.perf_counter() - start, 2)
+        self.assertEqual(len(curves), 2)
+        segmentation = builder.lumenSegmentation(create=False)
+        mask = slicer.util.arrayFromSegmentBinaryLabelmap(segmentation, LUMEN_SEGMENT_ID, volume) > 0
+        self.assertEqual(_boneVoxels(phantom, mask), 0)  # no leak into the vertebra
+        truth = phantom.truth
+        exclusions = [(j["point"], j["exclusion_radius_mm"]) for j in truth.junctions]
+        results = {}
+        for curve in curves:
+            side = curve.GetAttribute(PATH_ATTRIBUTE)
+            points = slicer.util.arrayFromMarkupsCurvePoints(curve, world=True)
+            dev = centerline_deviation(points, truth.path_points(side), exclusions)
+            METRICS[f"{method}: {side} path deviation mean/max, mm"] = f"{dev['mean_mm']:.3f} / {dev['max_mm']:.3f}"
+            results[side] = dev
+        self.assertEqual(sorted(results), ["left", "right"])
+        return results, builder, volume
+
+    def test_core_minimal_path_on_phantom(self):
+        results, _, _ = self._buildAndMeasure("minimal_path")
+        for dev in results.values():
+            self.assertLessEqual(dev["mean_mm"], 0.5)
+            self.assertLessEqual(dev["max_mm"], 1.0)
+
+    @unittest.skipIf(not hasattr(slicer.modules, "extractcenterline"), "SlicerVMTK is not installed")
+    def test_vmtk_on_phantom(self):
+        results, builder, _ = self._buildAndMeasure("vmtk")
+        self.assertEqual(builder.lastNetwork.method, "vmtk")
+        for dev in results.values():
+            self.assertLess(dev["mean_mm"], 1.0)  # comparison values are reported in METRICS
+
+    def test_rebuild_after_editing_the_lumen(self):
+        from AortaPlanLib.centerline import LUMEN_SEGMENT_ID
+
+        phantom, volume, builder = _aortoiliacSetup()
+        builder.build(volume, "minimal_path")
+        segmentation = builder.lumenSegmentation(create=False)
+        mask = slicer.util.arrayFromSegmentBinaryLabelmap(segmentation, LUMEN_SEGMENT_ID, volume)
+        mask[:, :, mask.shape[2] // 2 + 8 :] = 0  # erase the left iliac (high i = patient left)
+        slicer.util.updateSegmentBinaryLabelmapFromArray(mask, segmentation, LUMEN_SEGMENT_ID, volume)
+        curves = builder.rebuildCenterline(volume, "minimal_path")
+        self.assertEqual(len(curves), 1)
+        self.assertIn("end_unreachable:1", builder.lastNetwork.warnings)
+
+    def test_navigation_on_built_path(self):
+        from AortaPlanLib.navigation import SliceNavigator
+
+        phantom, volume, builder = _aortoiliacSetup()
+        curves = builder.build(volume, "minimal_path")
+        navigator = SliceNavigator()
+        navigator.setVolume(volume)
+        navigator.setCurve(curves[0])
+        self.assertAlmostEqual(navigator.path.length, curves[0].GetCurveLengthWorld(), delta=2.0)
+        navigator.setPosition(50.0)
+        self.assertGreater(phantom.volume.sample_linear(navigator.path.point_at(50.0)), 250.0)
+        navigator.cleanup()
+
+    def test_point_placement_modes(self):
+        from AortaPlanLib.centerline import ENDS, START, CenterlineBuilder
+
+        builder = CenterlineBuilder()
+        interaction = slicer.app.applicationLogic().GetInteractionNode()
+        selection = slicer.app.applicationLogic().GetSelectionNode()
+        builder.startPlacing(START)
+        self.assertEqual(interaction.GetCurrentInteractionMode(), interaction.Place)
+        self.assertEqual(selection.GetActivePlaceNodeID(), builder.pointsNode(START).GetID())
+        self.assertEqual(interaction.GetPlaceModePersistence(), 0)
+        builder.startPlacing(ENDS)
+        self.assertEqual(interaction.GetPlaceModePersistence(), 1)
+        builder.stopPlacing()
+        self.assertEqual(interaction.GetCurrentInteractionMode(), interaction.ViewTransform)
+
+
+@unittest.skipIf(slicer.util.mainWindow() is None, "the module GUI needs the main window (--slicer-gui)")
+class AortaPlanAutoCenterlineGuiTests(unittest.TestCase):
+    def setUp(self):
+        slicer.mrmlScene.Clear(0)
+
+    def tearDown(self):
+        slicer.util.selectModule("Welcome")
+        slicer.mrmlScene.Clear(0)
+
+    def test_build_button_creates_paths_and_navigation(self):
+        from aortaplan_core.phantoms.branching import aortoiliac, suggested_seeds
+        from AortaPlanLib.bridge import volumeToNode
+        from AortaPlanLib.centerline import ENDS, START
+
+        slicer.util.selectModule("AortaPlan")
+        widget = slicer.modules.aortaplan.widgetRepresentation().self()
+        phantom = aortoiliac()
+        volume = volumeToNode(phantom.volume, "aortoiliac")
+        widget.ui.volumeSelector.setCurrentNode(volume)
+        widget.setCurrentStep(1)
+        start, ends = suggested_seeds(phantom.truth)
+        widget.builder.pointsNode(START).AddControlPoint(*start, "")
+        for end in ends:
+            widget.builder.pointsNode(ENDS).AddControlPoint(*end, "")
+        widget._updatePointsInfo()
+        self.assertTrue(widget.ui.buildButton.enabled)
+        widget.ui.methodComboBox.currentIndex = widget.ui.methodComboBox.findData("minimal_path")
+        widget.ui.buildButton.click()
+        self.assertEqual(widget.ui.pathComboBox.count, 2)
+        self.assertIsNotNone(widget.navigator.path)
+        self.assertIsNotNone(widget._parameterNode.centerline)
+        widget.ui.pathComboBox.currentIndex = 1
+        self.assertIs(widget.navigator.curveNode, slicer.mrmlScene.GetNodeByID(widget.ui.pathComboBox.itemData(1)))

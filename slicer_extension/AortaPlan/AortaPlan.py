@@ -66,6 +66,7 @@ class AortaPlanParameterNode:
     currentStep: int = 0
     showAxial: bool = False
     windowLevelPreset: str = "cta"
+    centerlineMethod: str = "minimal_path"
 
 
 STEP_KEYS = [
@@ -81,7 +82,7 @@ STEP_KEYS = [
 PLACEHOLDER_STAGES = {3: 4, 4: 5, 5: 6, 6: 7, 7: 8}
 PRESET_BUTTONS = {"cta": "wlCtaButton", "calcium": "wlCalciumButton", "soft_tissue": "wlSoftTissueButton", "bone": "wlBoneButton"}
 STEP_STUDY, STEP_CENTERLINE = 0, 1
-DEVELOPMENT_STAGE = 1  # last implemented stage of SPEC section 8, shown under the disclaimer
+DEVELOPMENT_STAGE = 2  # last implemented stage of SPEC section 8, shown under the disclaimer
 
 
 #
@@ -103,6 +104,9 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._seriesRows = []
         self._updatingGui = False
         self._active = False
+        self.builder = None
+        self.segmentEditor = None
+        self._rebuildAfterPlacement = False
 
     # ------------------------------------------------------------------ setup
     def setup(self):
@@ -150,6 +154,30 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         interactionNode = slicer.app.applicationLogic().GetInteractionNode()
         self.addObserver(interactionNode, interactionNode.InteractionModeChangedEvent, self.onInteractionModeChanged)
 
+        # Step 2: automatic lumen and centerline
+        from AortaPlanLib.centerline import CenterlineBuilder
+
+        self.builder = CenterlineBuilder()
+        self._pointButtons = {
+            "start": self.ui.startPointButton,
+            "ends": self.ui.endPointsButton,
+            "stops": self.ui.stopPointsButton,
+        }
+        for kind, button in self._pointButtons.items():
+            button.connect("toggled(bool)", lambda checked, kind=kind: self.onPointButtonToggled(kind, checked))
+        self.ui.clearPointsButton.connect("clicked()", self.onClearPoints)
+        self.ui.methodComboBox.addItem(tr("auto.method.vmtk"), "vmtk")
+        self.ui.methodComboBox.addItem(tr("auto.method.minimal_path"), "minimal_path")
+        self.ui.methodComboBox.connect("currentIndexChanged(int)", self.onMethodChanged)
+        self.ui.exclusionSelector.setMRMLScene(slicer.mrmlScene)
+        self.ui.buildButton.connect("clicked()", self.onBuild)
+        self.ui.rebuildCenterlineButton.connect("clicked()", self.onRebuildCenterline)
+        self.ui.addBranchButton.connect("clicked()", self.onAddBranch)
+        self.ui.pathComboBox.connect("currentIndexChanged(int)", self.onPathSelected)
+        self.ui.showRenderingCheckBox.connect("toggled(bool)", self.onShowRenderingToggled)
+        self.ui.showLumenCheckBox.connect("toggled(bool)", lambda checked: self.builder.setLumenVisible(checked))
+        self._setupSegmentEditor()
+
         # Navigation and display
         self.ui.positionSliderWidget.connect("valueChanged(double)", self.onPositionSliderChanged)
         self.ui.rotationSliderWidget.connect("valueChanged(double)", self.onRotationSliderChanged)
@@ -189,6 +217,21 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         ui.loadSeriesButton.text = tr("study.load_series")
         ui.volumeLabel.text = tr("study.volume")
         ui.sampleDataButton.text = tr("study.sample_data")
+        ui.autoHintLabel.text = tr("auto.hint")
+        ui.startPointButton.text = tr("auto.start")
+        ui.endPointsButton.text = tr("auto.ends")
+        ui.stopPointsButton.text = tr("auto.stops")
+        ui.clearPointsButton.text = tr("auto.clear")
+        ui.methodLabel.text = tr("auto.method")
+        ui.exclusionLabel.text = tr("auto.exclusion")
+        ui.buildButton.text = tr("auto.build")
+        ui.pathLabel.text = tr("auto.path")
+        ui.addBranchButton.text = tr("auto.add_branch")
+        ui.rebuildCenterlineButton.text = tr("auto.rebuild_centerline")
+        ui.showRenderingCheckBox.text = tr("auto.show_rendering")
+        ui.showLumenCheckBox.text = tr("auto.show_lumen")
+        ui.editCollapsibleButton.text = tr("auto.edit_section")
+        ui.manualCollapsibleButton.text = tr("auto.manual_section")
         ui.curveLabel.text = tr("centerline.curve")
         ui.drawCurveButton.text = tr("centerline.draw")
         ui.finishCurveButton.text = tr("centerline.finish")
@@ -273,6 +316,8 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if not self._active:
             return
         self._active = False
+        if self.segmentEditor is not None:
+            self.segmentEditor.setActiveEffect(None)
         self.interaction.uninstall()
         self.navigator.detachOverlays()
         self.navigator.showCrossSectionIn3D(False)
@@ -283,6 +328,9 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.setParameterNode(None)
 
     def onSceneEndClose(self, caller, event):
+        self._ensureSegmentEditorNode()
+        if self.builder is not None:
+            self.builder.lastLumen = self.builder.lastNetwork = None
         if self.parent.isEntered:
             self.initializeParameterNode()
 
@@ -300,12 +348,16 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.curveSelector.setCurrentNode(parameterNode.centerline)
             self.ui.rotationSliderWidget.value = parameterNode.cprAngleDeg
             self.ui.showAxialCheckBox.checked = parameterNode.showAxial
+            methodIndex = self.ui.methodComboBox.findData(parameterNode.centerlineMethod)
+            self.ui.methodComboBox.currentIndex = max(0, methodIndex)
         finally:
             self._updatingGui = False
         self.navigator.angle = parameterNode.cprAngleDeg
         self.navigator.position = parameterNode.positionMm
         self._updateVolumeInfo()
         self._updateCurveInfo()
+        self._updatePointsInfo()
+        self._refreshPathList()
         self._updateButtons()
 
     # ------------------------------------------------------------------ wizard
@@ -328,6 +380,12 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         ui.drawCurveButton.enabled = hasVolume and not drawing
         ui.finishCurveButton.enabled = drawing
         ui.reverseCurveButton.enabled = ui.curveSelector.currentNode() is not None and not drawing
+        counts = self.builder.pointCounts() if self.builder else {"start": 0, "ends": 0}
+        ui.buildButton.enabled = hasVolume and counts["start"] > 0 and counts["ends"] > 0
+        hasLumen = self.builder is not None and self.builder.lastLumen is not None
+        ui.rebuildCenterlineButton.enabled = hasVolume and hasLumen
+        ui.addBranchButton.enabled = hasVolume and hasLumen
+        ui.pathComboBox.enabled = ui.pathComboBox.count > 0
         hasPath = self.navigator.path is not None
         ui.positionSliderWidget.enabled = hasPath
         ui.rotationSliderWidget.enabled = hasPath
@@ -417,6 +475,9 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
             applyWindowLevel(node, self._parameterNode.windowLevelPreset if self._parameterNode else "cta")
         self.navigator.setVolume(node)
+        self._showRendering(node)
+        if self.segmentEditor is not None:
+            self.segmentEditor.setSourceVolumeNode(node)
         self._updateVolumeInfo()
         self._updateButtons()
 
@@ -477,6 +538,16 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         interactionNode.SetCurrentInteractionMode(interactionNode.ViewTransform)
 
     def onInteractionModeChanged(self, caller, event):
+        interactionNode = slicer.app.applicationLogic().GetInteractionNode()
+        if interactionNode.GetCurrentInteractionMode() != interactionNode.Place:
+            for button in self._pointButtons.values():
+                button.blockSignals(True)
+                button.checked = False
+                button.blockSignals(False)
+            self._updatePointsInfo()
+            if self._rebuildAfterPlacement:
+                self._rebuildAfterPlacement = False
+                self.onBuild()
         if self.navigator.frozen and not self._isDrawing():
             self.navigator.setFrozen(False)
             self.interaction.updateBrowsing()
@@ -499,6 +570,189 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.curveLengthLabel.text = tr("centerline.too_short") if node is not None else ""
         else:
             self.ui.curveLengthLabel.text = tr("centerline.length", length=path.length)
+
+    # ------------------------------------------------------------------ step 2: automatic centerline
+    def _setupSegmentEditor(self):
+        editor = slicer.qMRMLSegmentEditorWidget()
+        editor.setMRMLScene(slicer.mrmlScene)
+        editor.segmentationNodeSelectorVisible = False
+        editor.sourceVolumeNodeSelectorVisible = False
+        editor.switchToSegmentationsButtonVisible = False
+        editor.setEffectNameOrder(["Paint", "Erase", "Scissors"])
+        editor.unorderedEffectsVisible = False
+        editor.setMaximumNumberOfUndoStates(20)
+        self.ui.segmentEditorPlaceholder.layout().addWidget(editor)
+        self.segmentEditor = editor
+        self._ensureSegmentEditorNode()
+
+    def _ensureSegmentEditorNode(self):
+        if self.segmentEditor is None:
+            return
+        node = slicer.mrmlScene.GetFirstNodeByName("AortaPlanSegmentEditor")
+        if node is None:
+            node = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentEditorNode", "AortaPlanSegmentEditor")
+            node.SetSaveWithScene(False)
+        self.segmentEditor.setMRMLSegmentEditorNode(node)
+
+    def _currentMethod(self):
+        return self.ui.methodComboBox.itemData(self.ui.methodComboBox.currentIndex) or "minimal_path"
+
+    def onMethodChanged(self, index):
+        if not self._updatingGui and self._parameterNode is not None:
+            self._parameterNode.centerlineMethod = self._currentMethod()
+
+    def onPointButtonToggled(self, kind, checked):
+        if checked:
+            for other, button in self._pointButtons.items():
+                if other != kind:
+                    button.blockSignals(True)
+                    button.checked = False
+                    button.blockSignals(False)
+            self.navigator.setFrozen(True)  # standard views while points are placed in slices
+            self.interaction.updateBrowsing()
+            self.builder.startPlacing(kind)
+            node = self.builder.pointsNode(kind)
+            for event in (slicer.vtkMRMLMarkupsNode.PointPositionDefinedEvent, slicer.vtkMRMLMarkupsNode.PointRemovedEvent):
+                if not self.hasObserver(node, event, self.onPointsModified):
+                    self.addObserver(node, event, self.onPointsModified)
+        else:
+            self.builder.stopPlacing()
+        self._updatePointsInfo()
+
+    def onPointsModified(self, caller, event):
+        self._updatePointsInfo()
+
+    def onClearPoints(self):
+        self.builder.clearPoints()
+        self._updatePointsInfo()
+        self._updateButtons()
+
+    def _updatePointsInfo(self):
+        if self.builder is None:
+            return
+        counts = self.builder.pointCounts()
+        self.ui.pointsInfoLabel.text = tr(
+            "auto.points_info",
+            start=tr("auto.yes") if counts["start"] else tr("auto.no"),
+            ends=counts["ends"],
+            stops=counts["stops"],
+        )
+        self._updateButtons()
+
+    def _progressCallback(self, dialog):
+        def callback(fraction, step):
+            dialog.setValue(int(round(100 * fraction)))
+            dialog.labelText = tr(f"progress.{step}")
+            slicer.app.processEvents()
+            return not dialog.wasCanceled
+
+        return callback
+
+    def _runBuild(self, function):
+        from aortaplan_core.lumen import Cancelled
+        from AortaPlanLib.centerline import describeWarnings
+
+        volume = self.ui.volumeSelector.currentNode()
+        if volume is None:
+            slicer.util.errorDisplay(tr("auto.need_volume"))
+            return
+        self.builder.stopPlacing()
+        dialog = slicer.util.createProgressDialog(windowTitle=tr("progress.title"), labelText=tr("progress.lumen.hu_range"))
+        try:
+            curves = function(volume, self._progressCallback(dialog))
+        except Cancelled:
+            self.ui.buildStatusLabel.text = tr("auto.cancelled")
+            return
+        except Exception as exc:
+            logging.exception("AortaPlan: build failed")
+            slicer.util.errorDisplay(tr("auto.failed", error=exc))
+            return
+        finally:
+            dialog.close()
+        lumen, network = self.builder.lastLumen, self.builder.lastNetwork
+        lines = [
+            tr(
+                "auto.result",
+                volume_ml=lumen.volume_ml,
+                low=lumen.hu_range[0],
+                high=lumen.hu_range[1],
+                paths=len(network.paths),
+                seconds=sum(v for k, v in self.builder.lastTimings.items() if k != "total_s"),
+            )
+        ]
+        for text in describeWarnings(list(lumen.warnings) + list(network.warnings)):
+            lines.append(f"<span style='color:#b35900'>⚠ {text}</span>")
+        self.ui.buildStatusLabel.text = "<br>".join(lines)
+        self.segmentEditor.setSegmentationNode(self.builder.lumenSegmentation(create=False))
+        self.segmentEditor.setSourceVolumeNode(volume)
+        self.builder.setLumenVisible(self.ui.showLumenCheckBox.checked)
+        self._refreshPathList(select=curves[0] if curves else None)
+
+    def onBuild(self):
+        exclusion = self.ui.exclusionSelector.currentNode()
+        method = self._currentMethod()
+        self._runBuild(lambda volume, progress: self.builder.build(volume, method, exclusion, progress))
+
+    def onRebuildCenterline(self):
+        method = self._currentMethod()
+        self._runBuild(lambda volume, progress: self.builder.rebuildCenterline(volume, method, progress))
+
+    def onAddBranch(self):
+        self._rebuildAfterPlacement = True
+        self.builder.startPlacing("ends")
+        interactionNode = slicer.app.applicationLogic().GetInteractionNode()
+        interactionNode.SetPlaceModePersistence(0)
+
+    def _refreshPathList(self, select=None):
+        if self.builder is None:
+            return
+        from AortaPlanLib.centerline import CenterlineBuilder
+
+        combo = self.ui.pathComboBox
+        current = select or (self._parameterNode.centerline if self._parameterNode else None)
+        combo.blockSignals(True)
+        combo.clear()
+        selectedIndex = -1
+        for curve in CenterlineBuilder.pathCurves():
+            side = curve.GetAttribute("AortaPlan.Path") or "center"
+            length = curve.GetCurveLengthWorld()
+            combo.addItem(tr("auto.path_name", side=tr(f"auto.side.{side}"), length=length), curve.GetID())
+            if current is not None and curve.GetID() == current.GetID():
+                selectedIndex = combo.count - 1
+        combo.blockSignals(False)
+        if combo.count:
+            combo.currentIndex = selectedIndex if selectedIndex >= 0 else 0
+            self.onPathSelected(combo.currentIndex)
+        self._updateButtons()
+
+    def onPathSelected(self, index):
+        if index < 0:
+            return
+        curve = slicer.mrmlScene.GetNodeByID(self.ui.pathComboBox.itemData(index))
+        if curve is None:
+            return
+        self.navigator.setFrozen(False)
+        self.ui.curveSelector.setCurrentNode(curve)  # -> onCurveSelected -> navigator
+
+    def _showRendering(self, volumeNode):
+        from AortaPlanLib.centerline import setVolumeRendering
+
+        if volumeNode is None or not self.ui.showRenderingCheckBox.checked:
+            return
+        setVolumeRendering(volumeNode, True)
+        from AortaPlanLib import layout
+
+        threeD = layout.threeDWidget()
+        if threeD is not None:
+            import ctk
+
+            threeD.threeDView().lookFromViewAxis(ctk.ctkAxesWidget.Anterior)
+            threeD.threeDView().resetFocalPoint()
+
+    def onShowRenderingToggled(self, checked):
+        from AortaPlanLib.centerline import setVolumeRendering
+
+        setVolumeRendering(self.ui.volumeSelector.currentNode(), checked)
 
     # ------------------------------------------------------------------ navigation
     def onNavigationChanged(self):

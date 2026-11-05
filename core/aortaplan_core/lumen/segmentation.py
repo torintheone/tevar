@@ -99,6 +99,47 @@ class LumenResult:
         }
 
 
+def lumen_from_mask(
+    mask: np.ndarray,
+    geometry: ImageGeometry,
+    start: np.ndarray,
+    ends: Sequence[np.ndarray],
+    hu_range: Tuple[float, float],
+    lumen_hu: float,
+    margin_voxels: int = 2,
+) -> LumenResult:
+    """LumenResult from a full-volume mask (e.g. after manual editing), cropped to its bounding box."""
+    coords = np.argwhere(mask)
+    if len(coords) == 0:
+        raise ValueError("the lumen mask is empty")
+    lo = np.maximum(coords.min(axis=0) - margin_voxels, 0)
+    hi = np.minimum(coords.max(axis=0) + margin_voxels, np.array(mask.shape) - 1)
+    cropped = mask[lo[0] : hi[0] + 1, lo[1] : hi[1] + 1, lo[2] : hi[2] + 1].copy()
+    start_ijk = lo[::-1]
+    roi_geometry = geometry.subgrid(start_ijk, (hi - lo + 1)[::-1])
+    labels, _ = ndimage.label(cropped, structure=_FACE_CONNECTIVITY)
+
+    def label_at(p):
+        i, j, k = np.round(roi_geometry.ras_to_ijk(np.asarray(p, float))).astype(int)
+        if not (0 <= k < labels.shape[0] and 0 <= j < labels.shape[1] and 0 <= i < labels.shape[2]):
+            return 0
+        return int(labels[k, j, i])
+
+    start_label = label_at(start)
+    connected = [start_label > 0 and label_at(e) == start_label for e in ends]
+    return LumenResult(
+        mask=cropped,
+        roi_start_ijk=tuple(int(x) for x in start_ijk),  # type: ignore[arg-type]
+        roi_geometry=roi_geometry,
+        hu_range=tuple(hu_range),  # type: ignore[arg-type]
+        lumen_hu=lumen_hu,
+        start=np.asarray(start, float),
+        ends=[np.asarray(e, float) for e in ends],
+        connected=connected,
+        warnings=[] if all(connected) else ["end_not_connected"],
+    )
+
+
 def _check(progress: Optional[ProgressCallback], fraction: float, step: str) -> None:
     if progress is not None and progress(fraction, step) is False:
         raise Cancelled()
