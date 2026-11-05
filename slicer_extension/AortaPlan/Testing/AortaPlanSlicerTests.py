@@ -398,6 +398,21 @@ class AortaPlanViewTests(unittest.TestCase):
         widget.ui.backButton.click()
         self.assertEqual(widget.ui.stepStack.currentIndex, 2)
 
+    def test_shift_does_not_jump_slices(self):
+        from AortaPlanLib import layout
+
+        widget, phantom, volume, curve = self._openModuleWithTorus()
+        crosshair = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLCrosshairNode")
+        self.assertEqual(crosshair.GetCrosshairBehavior(), slicer.vtkMRMLCrosshairNode.NoAction)
+        widget.navigator.setPosition(40.0)
+        before = slicer.util.arrayFromVTKMatrix(widget.navigator.crossNode.GetSliceToRAS())
+        longitudinal = layout.sliceWidget(layout.LONGITUDINAL_VIEW).sliceView().interactor()
+        longitudinal.SetEventInformation(30, 40, 0, 1)  # Shift + mouse move
+        longitudinal.InvokeEvent(vtk.vtkCommand.MouseMoveEvent)
+        crosshair.SetCrosshairRAS(*widget.navigator.path.point_at(80.0))  # e.g. Shift+move in another view
+        after = slicer.util.arrayFromVTKMatrix(widget.navigator.crossNode.GetSliceToRAS())
+        np.testing.assert_allclose(after, before, atol=1e-9)
+
     def test_wheel_keys_and_clicks(self):
         from AortaPlanLib import layout
 

@@ -285,6 +285,7 @@ class ViewInteraction:
         self._intersectionDisplays = []
         self._shortcuts = []
         self._press = {}
+        self._crosshairBehavior = None
         self.installed = False
 
     # ------------------------------------------------------------------ install
@@ -296,7 +297,10 @@ class ViewInteraction:
             if widget is None:
                 continue
             view = widget.sliceView()
-            self._styles.append(view.sliceViewInteractorStyle())
+            style = view.sliceViewInteractorStyle()
+            self._styles.append(style)
+            # Shift is the fast-scroll modifier here: Shift+mouse move must not set the crosshair.
+            style.SetActionEnabled(slicer.vtkMRMLSliceViewInteractorStyle.SetCrosshairPosition, False)
             interactor = view.interactor()
             self._observe(interactor, vtk.vtkCommand.MouseWheelForwardEvent, self._onWheel)
             self._observe(interactor, vtk.vtkCommand.MouseWheelBackwardEvent, self._onWheel)
@@ -313,6 +317,12 @@ class ViewInteraction:
             interactor = threeD.threeDView().interactor()
             self._observe(interactor, vtk.vtkCommand.LeftButtonPressEvent, self._onPress)
             self._observe(interactor, vtk.vtkCommand.LeftButtonReleaseEvent, self._on3DRelease)
+        # Slicer moves every slice view to the crosshair on Shift+mouse move ("jump slices"),
+        # which would pull the perpendicular and CPR views off the centerline.
+        crosshair = self._crosshairNode()
+        if crosshair is not None:
+            self._crosshairBehavior = crosshair.GetCrosshairBehavior()
+            crosshair.SetCrosshairBehavior(slicer.vtkMRMLCrosshairNode.NoAction)
         mainWindow = slicer.util.mainWindow()
         for sequence, callback in (
             ("Ctrl+Up", lambda: self.navigator.step(STEP_MM)),
@@ -332,7 +342,12 @@ class ViewInteraction:
         self._observations = []
         for style in self._styles:
             style.SetActionEnabled(slicer.vtkMRMLSliceViewInteractorStyle.BrowseSlice, True)
+            style.SetActionEnabled(slicer.vtkMRMLSliceViewInteractorStyle.SetCrosshairPosition, True)
         self._styles = []
+        crosshair = self._crosshairNode()
+        if crosshair is not None and self._crosshairBehavior is not None:
+            crosshair.SetCrosshairBehavior(self._crosshairBehavior)
+        self._crosshairBehavior = None
         for displayNode, visible in self._intersectionDisplays:
             displayNode.SetIntersectingSlicesVisibility(visible)
         self._intersectionDisplays = []
@@ -342,6 +357,10 @@ class ViewInteraction:
             shortcut.deleteLater()
         self._shortcuts = []
         self.installed = False
+
+    @staticmethod
+    def _crosshairNode():
+        return slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLCrosshairNode")
 
     def updateBrowsing(self):
         """Standard slice browsing while there is no curve; along-the-curve navigation otherwise."""

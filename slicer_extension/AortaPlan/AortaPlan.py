@@ -66,7 +66,7 @@ class AortaPlanParameterNode:
     currentStep: int = 0
     showAxial: bool = False
     windowLevelPreset: str = "cta"
-    centerlineMethod: str = "minimal_path"
+    centerlineMethod: str = "vmtk"  # chosen by the user on Panoramix (stage 2)
 
 
 STEP_KEYS = [
@@ -595,7 +595,7 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.segmentEditor.setMRMLSegmentEditorNode(node)
 
     def _currentMethod(self):
-        return self.ui.methodComboBox.itemData(self.ui.methodComboBox.currentIndex) or "minimal_path"
+        return self.ui.methodComboBox.itemData(self.ui.methodComboBox.currentIndex) or "vmtk"
 
     def onMethodChanged(self, index):
         if not self._updatingGui and self._parameterNode is not None:
