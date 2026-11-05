@@ -60,6 +60,9 @@ Full specification: `SPEC.md` (Russian). Status: `PROGRESS.md`. Re-read both bef
   feet). Output h:mm (step ≤ 15 min), degrees 0–360 clockwise, arc mm `L = angle/360·π·D`. In the
   arch the anterior reference degenerates: use a rotation-minimizing frame transported from the
   descending aorta and/or 12:00 at the greater curvature; mode is a setting and is printed in the report.
+- Cross-section view orientation (stage 1, `centerline/navigation.py`): anterior up, patient's left on
+  the right (axial seen from the feet); in degenerate runs (arch top, horizontal vessels) the missing
+  direction is carried from the distal side by rotation-minimizing transport. Curves run proximal → distal.
 - Lengths: along the centerline (primary); along greater/lesser curvature (from wall contour points);
   straight distance only as a secondary value.
 - Diameters per cross-section: min/max Feret (rotating calipers), mean, area-equivalent `2√(A/π)`,

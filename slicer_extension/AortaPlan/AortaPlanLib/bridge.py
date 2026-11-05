@@ -17,6 +17,16 @@ def volumeToNode(volume, name="AortaPlanVolume"):
     return slicer.util.addVolumeFromArray(volume.data, volume.geometry.ijk_to_ras_matrix(), name=name)
 
 
+def nodeGeometry(volumeNode):
+    """IJK->RAS geometry of a volume node without copying its voxels."""
+    imageData = volumeNode.GetImageData()
+    if imageData is None:
+        raise ValueError("volume node has no image data")
+    matrix = vtk.vtkMatrix4x4()
+    volumeNode.GetIJKToRASMatrix(matrix)
+    return ImageGeometry.from_ijk_to_ras_matrix(slicer.util.arrayFromVTKMatrix(matrix), imageData.GetDimensions())
+
+
 def nodeToVolume(volumeNode):
     """Copy a scalar volume node into a core :class:`Volume`."""
     if volumeNode.GetParentTransformNode() is not None:

@@ -2,30 +2,472 @@
 <ui version="4.0">
  <class>AortaPlan</class>
  <widget class="qMRMLWidget" name="AortaPlan">
-  <property name="geometry">
-   <rect>
-    <x>0</x>
-    <y>0</y>
-    <width>320</width>
-    <height>360</height>
-   </rect>
-  </property>
   <layout class="QVBoxLayout" name="mainLayout">
    <item>
     <widget class="QLabel" name="disclaimerLabel">
-     <property name="styleSheet">
-      <string notr="true">color: #a00000; font-weight: bold; padding: 4px;</string>
-     </property>
      <property name="wordWrap">
       <bool>true</bool>
      </property>
+     <property name="styleSheet">
+      <string notr="true">color: #a00000; font-weight: bold; padding: 4px;</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QWidget" name="stepButtonsWidget">
+     <layout class="QGridLayout" name="stepButtonsLayout">
+      <item row="0" column="0">
+       <widget class="QPushButton" name="step1Button">
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <property name="autoExclusive">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QPushButton" name="step2Button">
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <property name="autoExclusive">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="2">
+       <widget class="QPushButton" name="step3Button">
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <property name="autoExclusive">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="3">
+       <widget class="QPushButton" name="step4Button">
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <property name="autoExclusive">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QPushButton" name="step5Button">
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <property name="autoExclusive">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QPushButton" name="step6Button">
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <property name="autoExclusive">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="2">
+       <widget class="QPushButton" name="step7Button">
+        <property name="checkable">
+         <bool>true</bool>
+        </property>
+        <property name="autoExclusive">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QStackedWidget" name="stepStack">
+     <widget class="QWidget" name="studyPage">
+      <layout class="QVBoxLayout" name="studyLayout">
+       <item>
+        <layout class="QHBoxLayout" name="studyButtonsLayout">
+         <item>
+          <widget class="QPushButton" name="importDicomButton" />
+         </item>
+         <item>
+          <widget class="QPushButton" name="refreshSeriesButton" />
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QTableWidget" name="seriesTable" />
+       </item>
+       <item>
+        <widget class="QLabel" name="seriesStatusLabel">
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="loadSeriesButton" />
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="volumeLayout">
+         <item>
+          <widget class="QLabel" name="volumeLabel" />
+         </item>
+         <item>
+          <widget class="qMRMLNodeComboBox" name="volumeSelector">
+           <property name="nodeTypes">
+            <stringlist notr="true">
+             <string>vtkMRMLScalarVolumeNode</string>
+            </stringlist>
+           </property>
+           <property name="showChildNodeTypes">
+            <bool>false</bool>
+           </property>
+           <property name="addEnabled">
+            <bool>false</bool>
+           </property>
+           <property name="removeEnabled">
+            <bool>false</bool>
+           </property>
+           <property name="noneEnabled">
+            <bool>true</bool>
+           </property>
+           <property name="renameEnabled">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QPushButton" name="sampleDataButton" />
+       </item>
+       <item>
+        <widget class="QLabel" name="volumeInfoLabel">
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+         <property name="textFormat">
+          <enum>Qt::RichText</enum>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="centerlinePage">
+      <layout class="QVBoxLayout" name="centerlineLayout">
+       <item>
+        <layout class="QHBoxLayout" name="curveLayout">
+         <item>
+          <widget class="QLabel" name="curveLabel" />
+         </item>
+         <item>
+          <widget class="qMRMLNodeComboBox" name="curveSelector">
+           <property name="nodeTypes">
+            <stringlist notr="true">
+             <string>vtkMRMLMarkupsCurveNode</string>
+            </stringlist>
+           </property>
+           <property name="showChildNodeTypes">
+            <bool>false</bool>
+           </property>
+           <property name="addEnabled">
+            <bool>false</bool>
+           </property>
+           <property name="removeEnabled">
+            <bool>false</bool>
+           </property>
+           <property name="noneEnabled">
+            <bool>true</bool>
+           </property>
+           <property name="renameEnabled">
+            <bool>true</bool>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <layout class="QHBoxLayout" name="drawLayout">
+         <item>
+          <widget class="QPushButton" name="drawCurveButton" />
+         </item>
+         <item>
+          <widget class="QPushButton" name="finishCurveButton">
+           <property name="enabled">
+            <bool>false</bool>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QPushButton" name="reverseCurveButton" />
+       </item>
+       <item>
+        <widget class="QLabel" name="curveHintLabel">
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QLabel" name="curveLengthLabel">
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="centerlineSpacer">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="placeholderPage3">
+      <layout class="QVBoxLayout" name="placeholderLayout3">
+       <item>
+        <widget class="QLabel" name="placeholderLabel3">
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="placeholderSpacer3">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="placeholderPage4">
+      <layout class="QVBoxLayout" name="placeholderLayout4">
+       <item>
+        <widget class="QLabel" name="placeholderLabel4">
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="placeholderSpacer4">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="placeholderPage5">
+      <layout class="QVBoxLayout" name="placeholderLayout5">
+       <item>
+        <widget class="QLabel" name="placeholderLabel5">
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="placeholderSpacer5">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="placeholderPage6">
+      <layout class="QVBoxLayout" name="placeholderLayout6">
+       <item>
+        <widget class="QLabel" name="placeholderLabel6">
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="placeholderSpacer6">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="placeholderPage7">
+      <layout class="QVBoxLayout" name="placeholderLayout7">
+       <item>
+        <widget class="QLabel" name="placeholderLabel7">
+         <property name="wordWrap">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="placeholderSpacer7">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+   <item>
+    <layout class="QHBoxLayout" name="wizardButtonsLayout">
+     <item>
+      <widget class="QPushButton" name="backButton" />
+     </item>
+     <item>
+      <widget class="QPushButton" name="nextButton" />
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="ctkCollapsibleButton" name="navigationCollapsibleButton">
+     <layout class="QVBoxLayout" name="navigationLayout">
+      <item>
+       <widget class="QLabel" name="positionValueLabel">
+        <property name="styleSheet">
+         <string notr="true">font-size: 16pt; font-weight: bold;</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <layout class="QFormLayout" name="navigationFormLayout">
+        <item row="0" column="0">
+         <widget class="QLabel" name="positionLabel" />
+        </item>
+        <item row="0" column="1">
+         <widget class="ctkSliderWidget" name="positionSliderWidget">
+          <property name="decimals">
+           <number>1</number>
+          </property>
+          <property name="singleStep">
+           <double>1.0</double>
+          </property>
+          <property name="pageStep">
+           <double>10.0</double>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0">
+         <widget class="QLabel" name="rotationLabel" />
+        </item>
+        <item row="1" column="1">
+         <widget class="ctkSliderWidget" name="rotationSliderWidget">
+          <property name="decimals">
+           <number>0</number>
+          </property>
+          <property name="singleStep">
+           <double>5.0</double>
+          </property>
+          <property name="pageStep">
+           <double>45.0</double>
+          </property>
+          <property name="minimum">
+           <double>0.0</double>
+          </property>
+          <property name="maximum">
+           <double>360.0</double>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QLabel" name="navigationHelpLabel">
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">color: #777777;</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="ctkCollapsibleButton" name="displayCollapsibleButton">
+     <layout class="QVBoxLayout" name="displayLayout">
+      <item>
+       <layout class="QHBoxLayout" name="presetsLayout">
+        <item>
+         <widget class="QPushButton" name="wlCtaButton" />
+        </item>
+        <item>
+         <widget class="QPushButton" name="wlCalciumButton" />
+        </item>
+        <item>
+         <widget class="QPushButton" name="wlSoftTissueButton" />
+        </item>
+        <item>
+         <widget class="QPushButton" name="wlBoneButton" />
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="showAxialCheckBox" />
+      </item>
+     </layout>
     </widget>
    </item>
    <item>
     <widget class="ctkCollapsibleButton" name="modeCollapsibleButton">
      <layout class="QVBoxLayout" name="modeLayout">
       <item>
-       <widget class="QCheckBox" name="appModeCheckBox"/>
+       <widget class="QCheckBox" name="appModeCheckBox" />
       </item>
       <item>
        <widget class="QCheckBox" name="showSlicerUiCheckBox">
@@ -42,21 +484,21 @@
      <layout class="QVBoxLayout" name="environmentLayout">
       <item>
        <widget class="QLabel" name="environmentLabel">
-        <property name="textFormat">
-         <enum>Qt::RichText</enum>
-        </property>
         <property name="wordWrap">
          <bool>true</bool>
+        </property>
+        <property name="textFormat">
+         <enum>Qt::RichText</enum>
         </property>
        </widget>
       </item>
       <item>
        <layout class="QHBoxLayout" name="environmentButtonsLayout">
         <item>
-         <widget class="QPushButton" name="recheckButton"/>
+         <widget class="QPushButton" name="recheckButton" />
         </item>
         <item>
-         <widget class="QPushButton" name="installPackagesButton"/>
+         <widget class="QPushButton" name="installPackagesButton" />
         </item>
        </layout>
       </item>
@@ -71,7 +513,7 @@
      <property name="sizeHint" stdset="0">
       <size>
        <width>20</width>
-       <height>40</height>
+       <height>20</height>
       </size>
      </property>
     </spacer>
@@ -91,7 +533,17 @@
    <header>ctkCollapsibleButton.h</header>
    <container>1</container>
   </customwidget>
+  <customwidget>
+   <class>ctkSliderWidget</class>
+   <extends>QWidget</extends>
+   <header>ctkSliderWidget.h</header>
+  </customwidget>
+  <customwidget>
+   <class>qMRMLNodeComboBox</class>
+   <extends>QWidget</extends>
+   <header>qMRMLNodeComboBox.h</header>
+  </customwidget>
  </customwidgets>
- <resources/>
- <connections/>
+ <resources />
+ <connections />
 </ui>
