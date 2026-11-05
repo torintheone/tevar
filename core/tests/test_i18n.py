@@ -33,3 +33,14 @@ def test_unknown_key_falls_back_to_key():
 def test_unknown_language_rejected():
     with pytest.raises(ValueError):
         i18n.set_language("xx")
+
+
+def test_codes_used_by_the_core_have_strings():
+    from aortaplan_core.display import WINDOW_LEVEL_PRESETS
+
+    codes = ["thick_slices", "anisotropic", "gantry_tilt", "irregular_spacing", "few_slices", "no_geometry"]
+    keys = set(i18n.keys())
+    for code in codes:
+        assert f"study.warning.{code}" in keys
+    for preset in WINDOW_LEVEL_PRESETS:
+        assert f"wl.{preset.key}" in keys
