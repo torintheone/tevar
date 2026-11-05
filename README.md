@@ -27,13 +27,23 @@
 2. **Расширения Slicer.** View → Extensions Manager → Install Extensions → установить
    **SlicerVMTK** и **SegmentEditorExtraEffects** → перезапустить Slicer.
    Если чего-то не хватает, модуль AortaPlan сам покажет это в разделе «Проверка окружения».
-3. **Код.** Склонировать репозиторий (git или GitHub Desktop) и переключиться на рабочую ветку:
-   ```
-   git clone https://github.com/torintheone/tevar.git
-   cd tevar
-   git checkout ccr-0312d8ba-qbg2ch
-   ```
-   Обновление после каждого этапа: `git pull`.
+3. **Код.** Все команды в этом README вводятся в **командной строке Windows** (Win+R → `cmd` → Enter),
+   а не в Python-консоли Slicer.
+   - Вариант А, через git (удобно получать обновления). Один раз установить
+     [Git for Windows](https://git-scm.com/download/win) с настройками по умолчанию, открыть
+     новое окно командной строки и выполнить:
+     ```
+     cd /d %USERPROFILE%\Documents
+     git clone https://github.com/torintheone/tevar.git
+     cd tevar
+     git checkout ccr-0312d8ba-qbg2ch
+     ```
+     Код окажется в `Документы\tevar`. Обновление после каждого этапа:
+     `cd /d %USERPROFILE%\Documents\tevar` и `git pull`.
+   - Вариант Б, без git: скачать архив ветки
+     <https://github.com/torintheone/tevar/archive/refs/heads/ccr-0312d8ba-qbg2ch.zip>
+     и распаковать в `Документы`; внутри архива папка `tevar-ccr-0312d8ba-qbg2ch` — переименуйте
+     её в `tevar`. Для обновления — скачать архив заново.
 4. **Подключение модуля (Additional module paths).**
    Edit → Application Settings → Modules → раздел Additional module paths
    (если список скрыт, раскройте его кнопкой «>>») → Add → выбрать папку
@@ -52,7 +62,8 @@ Edit → Application Settings → Developer → Enable developer mode. Посл�
 
 ## Тесты
 
-Все тесты одной командой (из папки репозитория):
+Все тесты одной командой — в командной строке Windows, из папки репозитория
+(например, `cd /d %USERPROFILE%\Documents\tevar`):
 
 ```
 scripts\run_tests.bat                 :: ядро + тесты внутри Slicer без окна
