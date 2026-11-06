@@ -62,7 +62,7 @@ LENGTH_ATTRIBUTE = "AortaPlan.CprLength"
 RULER_ATTRIBUTE = "AortaPlan.Ruler"
 PATH_ATTRIBUTE = "AortaPlan.Path"
 CONTROL_POINT_SPACING_MM = 4.0
-UPDATE_DELAY_MS = 30
+UPDATE_DELAY_MS = 60  # contours follow after a short pause, so scrolling itself stays fast
 HIT_TOLERANCE_PX = 8.0
 
 

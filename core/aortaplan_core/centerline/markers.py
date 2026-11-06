@@ -145,8 +145,12 @@ def distance(
     paths: Dict[str, CurvePath],
     preferred: Sequence[str] = (),
     tolerance_mm: float = ON_PATH_TOLERANCE_MM,
+    cache: Optional[Dict[Tuple[str, str], Tuple[float, float]]] = None,
 ) -> Distance:
-    """Distance along the centerline network and straight distance between two points."""
+    """Distance along the centerline network and straight distance between two points.
+
+    ``cache`` (optional dict) keeps the split points of path pairs between calls.
+    """
     a = np.asarray(point_a, dtype=float)
     b = np.asarray(point_b, dtype=float)
     straight = float(np.linalg.norm(b - a))
@@ -159,9 +163,15 @@ def distance(
     best: Optional[float] = None
     for name_a, s_a in on_a.items():
         for name_b, s_b in on_b.items():
-            s_div = divergence(paths[name_a], paths[name_b], tolerance_mm)
-            # The divergence point is the same physical point on both paths (shared part).
-            s_div_b = paths[name_b].nearest_arc_length(paths[name_a].point_at(s_div))[0]
+            key = (name_a, name_b)
+            if cache is not None and key in cache:
+                s_div, s_div_b = cache[key]
+            else:
+                s_div = divergence(paths[name_a], paths[name_b], tolerance_mm)
+                # The divergence point is the same physical point on both paths (shared part).
+                s_div_b = paths[name_b].nearest_arc_length(paths[name_a].point_at(s_div))[0]
+                if cache is not None:
+                    cache[key] = (s_div, s_div_b)
             if s_a < s_div or s_b < s_div_b:
                 continue
             value = (s_a - s_div) + (s_b - s_div_b)
@@ -170,18 +180,19 @@ def distance(
     return Distance(best, straight, None)
 
 
-def marker_distance(a: Marker, b: Marker, paths: Dict[str, CurvePath]) -> Distance:
+def marker_distance(a: Marker, b: Marker, paths: Dict[str, CurvePath], cache=None) -> Distance:
     preferred = [name for name in (a.path, b.path) if name]
-    return distance(a.point, b.point, paths, preferred)
+    return distance(a.point, b.point, paths, preferred, cache=cache)
 
 
 def distance_table(markers: List[Marker], paths: Dict[str, CurvePath]) -> List[List[Optional[Distance]]]:
     """Matrix of distances between all markers (None on the diagonal)."""
     n = len(markers)
     table: List[List[Optional[Distance]]] = [[None] * n for _ in range(n)]
+    cache: Dict[Tuple[str, str], Tuple[float, float]] = {}
     for i in range(n):
         for j in range(i + 1, n):
-            d = marker_distance(markers[i], markers[j], paths)
+            d = marker_distance(markers[i], markers[j], paths, cache)
             table[i][j] = table[j][i] = d
     return table
 
