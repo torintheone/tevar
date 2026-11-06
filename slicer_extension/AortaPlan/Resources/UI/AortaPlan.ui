@@ -545,6 +545,23 @@
     <widget class="ctkCollapsibleButton" name="navigationCollapsibleButton">
      <layout class="QVBoxLayout" name="navigationLayout">
       <item>
+       <layout class="QHBoxLayout" name="viewModeLayout">
+        <item>
+         <widget class="QLabel" name="viewModeLabel" />
+        </item>
+        <item>
+         <widget class="QRadioButton" name="pathModeRadio">
+          <property name="checked">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QRadioButton" name="mprModeRadio" />
+        </item>
+       </layout>
+      </item>
+      <item>
        <widget class="QLabel" name="positionValueLabel">
         <property name="styleSheet">
          <string notr="true">font-size: 16pt; font-weight: bold;</string>
@@ -627,6 +644,29 @@
       </item>
       <item>
        <widget class="QCheckBox" name="showAxialCheckBox" />
+      </item>
+      <item>
+       <layout class="QHBoxLayout" name="layoutTemplateLayout">
+        <item>
+         <widget class="QLabel" name="layoutTemplateLabel" />
+        </item>
+        <item>
+         <widget class="QComboBox" name="layoutTemplateComboBox" />
+        </item>
+        <item>
+         <widget class="QPushButton" name="resetLayoutButton" />
+        </item>
+       </layout>
+      </item>
+      <item>
+       <widget class="QLabel" name="layoutHintLabel">
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">color: #777777;</string>
+        </property>
+       </widget>
       </item>
      </layout>
     </widget>

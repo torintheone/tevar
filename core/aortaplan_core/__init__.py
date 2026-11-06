@@ -8,6 +8,6 @@ Rules (see CLAUDE.md):
 For research use only. Not for clinical decision making.
 """
 
-__version__ = "0.3.0"  # stage 3
+__version__ = "0.3.1"  # stage 3 + view layout / MPR fixes
 
 __all__ = ["__version__"]

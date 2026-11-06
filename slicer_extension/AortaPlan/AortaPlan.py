@@ -65,6 +65,7 @@ class AortaPlanParameterNode:
     cprAngleDeg: float = 0.0
     currentStep: int = 0
     showAxial: bool = False
+    viewMode: str = "path"  # "path" (along the centerline) or "mpr"
     windowLevelPreset: str = "cta"
     centerlineMethod: str = "vmtk"  # chosen by the user on Panoramix (stage 2)
 
@@ -125,6 +126,10 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.logic = AortaPlanLogic()
         self.appMode = AppModeController(windowTitle=tr("app.window_title"))
         self.layoutController = LayoutController()
+        self.layoutController.listeners.append(self._onLayoutRebuilt)
+        from AortaPlanLib.viewdrag import ViewDragSwapper
+
+        self.dragSwapper = ViewDragSwapper(self.layoutController)
         self.navigator = SliceNavigator()
         self.navigator.listeners.append(self.onNavigationChanged)
         self.interaction = ViewInteraction(self.navigator)
@@ -184,6 +189,15 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         for key, buttonName in PRESET_BUTTONS.items():
             getattr(self.ui, buttonName).connect("clicked()", lambda key=key: self.onWindowLevelPreset(key))
         self.ui.showAxialCheckBox.connect("toggled(bool)", self.onShowAxialToggled)
+        from AortaPlanLib.layout import TEMPLATES
+
+        for template in TEMPLATES:
+            self.ui.layoutTemplateComboBox.addItem(tr(f"layout.template.{template}"), template)
+        self.ui.layoutTemplateComboBox.currentIndex = max(0, self.ui.layoutTemplateComboBox.findData(self.layoutController.template))
+        self.ui.layoutTemplateComboBox.connect("currentIndexChanged(int)", self.onLayoutTemplateChanged)
+        self.ui.resetLayoutButton.connect("clicked()", self.onResetLayout)
+        self.ui.pathModeRadio.connect("toggled(bool)", lambda checked: checked and self.setViewMode("path"))
+        self.ui.mprModeRadio.connect("toggled(bool)", lambda checked: checked and self.setViewMode("mpr"))
 
         # Mode and environment
         self.ui.appModeCheckBox.connect("toggled(bool)", self.onAppModeToggled)
@@ -252,6 +266,12 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             button.text = tr(f"wl.{key}")
             button.toolTip = tr("wl.tooltip", window=preset.window, level=preset.level)
         ui.showAxialCheckBox.text = tr("layout.show_axial")
+        ui.layoutTemplateLabel.text = tr("layout.template")
+        ui.resetLayoutButton.text = tr("layout.reset")
+        ui.layoutHintLabel.text = tr("layout.drag_hint")
+        ui.viewModeLabel.text = tr("view.mode")
+        ui.pathModeRadio.text = tr("view.mode.path")
+        ui.mprModeRadio.text = tr("view.mode.mpr")
         ui.modeCollapsibleButton.text = tr("appmode.section")
         ui.appModeCheckBox.text = tr("appmode.enable")
         ui.appModeCheckBox.toolTip = tr("appmode.enable.tooltip")
@@ -310,7 +330,19 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.navigator.showCrossSectionIn3D(True)
         self.navigator.attachOverlays()
         self.interaction.install()
-        self.interaction.updateBrowsing()
+        self.setViewMode(self._parameterNode.viewMode if self._parameterNode else "path")
+        self.dragSwapper.install()
+
+    def _onLayoutRebuilt(self):
+        """The views were re-arranged: re-attach the interaction, overlays and title-bar dragging."""
+        if not self._active:
+            return
+        self.interaction.uninstall()
+        self.navigator.detachOverlays()
+        self.navigator.rebuild()  # CPR views are re-fitted to their new size
+        self.navigator.attachOverlays()
+        self.interaction.install()
+        self.dragSwapper.install()
 
     def _deactivateViews(self):
         if not self._active:
@@ -318,6 +350,7 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._active = False
         if self.segmentEditor is not None:
             self.segmentEditor.setActiveEffect(None)
+        self.dragSwapper.uninstall()
         self.interaction.uninstall()
         self.navigator.detachOverlays()
         self.navigator.showCrossSectionIn3D(False)
@@ -389,6 +422,7 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         hasPath = self.navigator.path is not None
         ui.positionSliderWidget.enabled = hasPath
         ui.rotationSliderWidget.enabled = hasPath
+        ui.pathModeRadio.enabled = hasPath
 
     # ------------------------------------------------------------------ step 1: study
     def refreshSeriesList(self):
@@ -507,6 +541,8 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if self._parameterNode is not None:
             self._parameterNode.centerline = node
         self.navigator.setCurve(node)
+        if self.navigator.path is not None:
+            self.setViewMode("path")
         self.interaction.updateBrowsing()
         self._updateCurveInfo()
         self._updateButtons()
@@ -732,7 +768,7 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if curve is None:
             return
         self.navigator.setFrozen(False)
-        self.ui.curveSelector.setCurrentNode(curve)  # -> onCurveSelected -> navigator
+        self.ui.curveSelector.setCurrentNode(curve)  # -> onCurveSelected -> navigator (path mode)
 
     def _showRendering(self, volumeNode):
         from AortaPlanLib.centerline import setVolumeRendering
@@ -797,9 +833,32 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if self._parameterNode is not None:
             self._parameterNode.showAxial = checked
         if self._active:
-            self._deactivateViews()
+            self.layoutController.setWithAxial(checked)  # -> _onLayoutRebuilt
+        else:
             self.layoutController.withAxial = checked
-            self._activateViews()
+
+    def onLayoutTemplateChanged(self, index):
+        template = self.ui.layoutTemplateComboBox.itemData(index)
+        if template:
+            self.layoutController.setTemplate(template)
+
+    def onResetLayout(self):
+        self.layoutController.reset()
+        self.ui.layoutTemplateComboBox.blockSignals(True)
+        self.ui.layoutTemplateComboBox.currentIndex = self.ui.layoutTemplateComboBox.findData(self.layoutController.template)
+        self.ui.layoutTemplateComboBox.blockSignals(False)
+
+    def setViewMode(self, mode):
+        """'path' (along the centerline) or 'mpr' (free MPR, as in RadiAnt)."""
+        if self._parameterNode is not None:
+            self._parameterNode.viewMode = mode
+        for radio, value in ((self.ui.pathModeRadio, "path"), (self.ui.mprModeRadio, "mpr")):
+            radio.blockSignals(True)
+            radio.checked = mode == value
+            radio.blockSignals(False)
+        self.navigator.setMode(mode)
+        self.interaction.updateBrowsing()
+        self._updateButtons()
 
     # ------------------------------------------------------------------ mode and environment
     def onAppModeToggled(self, checked):

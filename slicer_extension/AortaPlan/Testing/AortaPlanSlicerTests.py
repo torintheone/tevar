@@ -11,6 +11,7 @@ import tempfile
 import unittest
 
 import numpy as np
+import qt
 import slicer
 import vtk
 
@@ -356,6 +357,19 @@ class AortaPlanNavigationTests(unittest.TestCase):
         )
         navigator.cleanup()
 
+    def test_mpr_and_path_modes(self):
+        phantom, volume, curve, navigator = _torusSetup()
+        navigator.setPosition(50.0)
+        navigator.setMode("mpr")
+        self.assertFalse(navigator.navigating)
+        m = slicer.util.arrayFromVTKMatrix(navigator.crossNode.GetSliceToRAS())
+        np.testing.assert_allclose(m[:3, :3], np.diag([-1.0, 1.0, 1.0]), atol=1e-9)  # axial
+        np.testing.assert_allclose(m[:3, 3], navigator.path.point_at(50.0), atol=1e-6)  # through the point
+        navigator.setMode("path")
+        self.assertTrue(navigator.navigating)
+        np.testing.assert_allclose(_cursorPosition(navigator), navigator.path.point_at(50.0), atol=1e-6)
+        navigator.cleanup()
+
     def test_curve_edits_and_standard_views(self):
         phantom, volume, curve, navigator = _torusSetup()
         length = navigator.path.length
@@ -409,10 +423,37 @@ class AortaPlanViewTests(unittest.TestCase):
         self.assertIsNotNone(layout.sliceWidget(layout.CROSS_VIEW))
         self.assertIsNotNone(layout.sliceWidget(layout.LONGITUDINAL_VIEW))
         self.assertIsNotNone(layout.sliceWidget(layout.CPR2_VIEW))
-        controller.activate(withAxial=True)
-        self.assertEqual(layoutManager.layout, layout.LAYOUT_WITH_AXIAL_ID)
+        controller.setWithAxial(True)
+        self.assertEqual(layoutManager.layout, layout.LAYOUT_ID)
+        self.assertIsNotNone(layout.sliceWidget(layout.AXIAL_VIEW))
         controller.deactivate()
         self.assertEqual(layoutManager.layout, slicer.vtkMRMLLayoutNode.SlicerLayoutFourUpView)
+
+    def test_layout_templates_and_swapping(self):
+        import re
+
+        from AortaPlanLib import layout
+
+        controller = layout.LayoutController()
+        controller.reset()
+        controller.activate(withAxial=False)
+        layoutNode = slicer.app.layoutManager().layoutLogic().GetLayoutNode()
+
+        def order():
+            return re.findall(r'singletontag="([^"]+)"', layoutNode.GetCurrentLayoutDescription())
+
+        self.assertEqual(order(), [layout.LONGITUDINAL_VIEW, layout.CPR2_VIEW, layout.CROSS_VIEW, "1"])
+        controller.swap(layout.CROSS_VIEW, layout.LONGITUDINAL_VIEW)
+        self.assertEqual(order()[0], layout.CROSS_VIEW)
+        self.assertIsNotNone(layout.sliceWidget(layout.CROSS_VIEW))
+        for template in layout.TEMPLATES:
+            controller.setTemplate(template)
+            self.assertEqual(sorted(order()), sorted([layout.LONGITUDINAL_VIEW, layout.CPR2_VIEW, layout.CROSS_VIEW, "1"]))
+        # The arrangement is remembered for the next session.
+        self.assertEqual(layout.LayoutController().order[0], layout.CROSS_VIEW)
+        controller.reset()
+        self.assertEqual(order()[0], layout.LONGITUDINAL_VIEW)
+        controller.deactivate()
 
     def test_module_gui_drives_navigation(self):
         widget, phantom, volume, curve = self._openModuleWithTorus()
@@ -431,6 +472,79 @@ class AortaPlanViewTests(unittest.TestCase):
         self.assertEqual(widget.ui.stepStack.currentIndex, 3)
         widget.ui.backButton.click()
         self.assertEqual(widget.ui.stepStack.currentIndex, 2)
+
+    def test_drag_view_onto_another_swaps_them(self):
+        from AortaPlanLib import layout
+
+        widget, phantom, volume, curve = self._openModuleWithTorus()
+        widget.layoutController.reset()
+        target = layout.viewWidget(layout.THREE_D_VIEW)
+        center = target.mapToGlobal(qt.QPoint(target.width // 2, target.height // 2))
+        found = widget.dragSwapper.tagAt(center)
+        if found is not None:  # None only if another window covers Slicer during the test
+            self.assertEqual(found, layout.THREE_D_VIEW)
+        widget.dragSwapper.swap(layout.CPR2_VIEW, layout.THREE_D_VIEW)
+        slicer.app.processEvents()
+        self.assertEqual(widget.layoutController.order.index(layout.THREE_D_VIEW), 1)
+        self.assertIsNotNone(widget.navigator.path)  # navigation survives the re-arrangement
+        widget.layoutController.reset()
+
+    def test_mpr_mode_like_radiant(self):
+        from AortaPlanLib import layout
+
+        widget, phantom, volume, curve = self._openModuleWithTorus()
+        widget.navigator.setPosition(60.0)
+        point = widget.navigator.path.point_at(60.0)
+        widget.setViewMode("mpr")
+        self.assertFalse(widget.navigator.navigating)
+        cross = widget.navigator.crossNode
+        np.testing.assert_allclose(slicer.util.arrayFromVTKMatrix(cross.GetSliceToRAS())[:3, :3], np.diag([-1, 1, 1]), atol=1e-9)
+        displayNode = layout.sliceWidget(layout.CROSS_VIEW).sliceLogic().GetSliceDisplayNode()
+        self.assertTrue(displayNode.GetIntersectingSlicesVisibility())
+        self.assertTrue(displayNode.GetIntersectingSlicesInteractive())
+        crosshair = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLCrosshairNode")
+        self.assertNotEqual(crosshair.GetCrosshairBehavior(), slicer.vtkMRMLCrosshairNode.NoAction)
+        # A click in the axial (perpendicular) view moves the coronal and sagittal slices to the point.
+        slicer.app.processEvents()
+        target = point + np.array([5.0, 3.0, 0.0])
+        rasToXy = vtk.vtkMatrix4x4()
+        vtk.vtkMatrix4x4.Invert(cross.GetXYToRAS(), rasToXy)
+        x, y = rasToXy.MultiplyPoint([*target, 1.0])[:2]
+        interactor = layout.sliceWidget(layout.CROSS_VIEW).sliceView().interactor()
+        interactor.SetEventInformation(int(round(x)), int(round(y)), 0, 0)
+        interactor.InvokeEvent(vtk.vtkCommand.LeftButtonPressEvent)
+        interactor.InvokeEvent(vtk.vtkCommand.LeftButtonReleaseEvent)
+        clicked = np.array(cross.GetXYToRAS().MultiplyPoint([int(round(x)), int(round(y)), 0.0, 1.0])[:3])
+        for name in layout.CPR_VIEWS:  # coronal and sagittal in MPR mode
+            m = slicer.util.arrayFromVTKMatrix(layout.ensureSliceNode(name).GetSliceToRAS())
+            self.assertLess(abs(np.dot(clicked - m[:3, 3], m[:3, 2])), 0.5)
+        widget.setViewMode("path")
+        self.assertTrue(widget.navigator.navigating)
+        self.assertEqual(crosshair.GetCrosshairBehavior(), slicer.vtkMRMLCrosshairNode.NoAction)
+        self.assertFalse(displayNode.GetIntersectingSlicesVisibility())
+
+    def test_rotate_cpr_by_dragging_its_line(self):
+        from AortaPlanLib import layout
+
+        widget, phantom, volume, curve = self._openModuleWithTorus()
+        navigator = widget.navigator
+        navigator.setPosition(40.0)
+        navigator.setAngle(0.0)
+        slicer.app.processEvents()
+        cross = navigator.crossNode
+        rasToXy = vtk.vtkMatrix4x4()
+        vtk.vtkMatrix4x4.Invert(cross.GetXYToRAS(), rasToXy)
+        line = slicer.util.arrayFromMarkupsControlPoints(navigator.axisLine(navigator.cprViews[0]), world=True)
+        x, y = rasToXy.MultiplyPoint([*line[1], 1.0])[:2]
+        interactor = layout.sliceWidget(layout.CROSS_VIEW).sliceView().interactor()
+        interactor.SetEventInformation(int(round(x)), int(round(y)), 0, 0)
+        interactor.InvokeEvent(vtk.vtkCommand.LeftButtonPressEvent)
+        target = navigator.cpr.to_ras(20.0, 40.0, 40.0)  # a point on the 40 deg line
+        x, y = rasToXy.MultiplyPoint([*target, 1.0])[:2]
+        interactor.SetEventInformation(int(round(x)), int(round(y)), 0, 0)
+        interactor.InvokeEvent(vtk.vtkCommand.MouseMoveEvent)
+        interactor.InvokeEvent(vtk.vtkCommand.LeftButtonReleaseEvent)
+        self.assertAlmostEqual(navigator.angle, 40.0, delta=3.0)
 
     def test_shift_does_not_jump_slices(self):
         from AortaPlanLib import layout

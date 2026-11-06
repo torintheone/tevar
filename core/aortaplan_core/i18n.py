@@ -115,6 +115,18 @@ _STRINGS: Dict[str, Dict[str, str]] = {
         "wl.tooltip": "Окно {window:.0f} HU, уровень {level:.0f} HU",
         # Views and layout
         "layout.show_axial": "Показать аксиальный срез",
+        "view.mode": "Режим:",
+        "view.mode.path": "Вдоль центральной линии",
+        "view.mode.mpr": "MPR (как в RadiAnt)",
+        "layout.template": "Раскладка:",
+        "layout.template.columns": "Две CPR рядом",
+        "layout.template.grid": "Сетка 2 × 2",
+        "layout.template.large_first": "Первое окно крупно",
+        "layout.reset": "Сбросить",
+        "layout.drag_hint": (
+            "Окна меняются местами перетаскиванием: возьмите окно за цветной заголовок и отпустите "
+            "над другим окном. Границы между окнами тоже двигаются мышью."
+        ),
         "view.label.longitudinal": "CPR",
         "view.label.cpr1": "CPR 1",
         "view.label.cpr2": "CPR 2",
@@ -141,10 +153,12 @@ _STRINGS: Dict[str, Dict[str, str]] = {
         "nav.position_of": "{value:.1f} мм из {length:.1f} мм",
         "nav.no_curve": "Нет кривой: нарисуйте её на шаге «Центральная линия».",
         "nav.help": (
-            "CPR: левая кнопка — тянуть положение (клик — перейти); колесо ±1 мм, Shift+колесо ±5 мм; "
-            "Ctrl+колесо — поворот CPR на ±5°; масштаб — правая кнопка. "
-            "Перпендикулярный срез: колесо или ↑/↓ ±1 мм (с Shift ±5 мм). "
-            "Ctrl+↑/↓: ±1 мм, Ctrl+←/→: поворот на ±10°. Клик по линии в 3D — перейти к точке."
+            "Вдоль линии. CPR: левая кнопка — тянуть положение (клик — перейти); колесо ±1 мм, "
+            "Shift+колесо ±5 мм; Ctrl+колесо — поворот CPR на ±5°; масштаб — правая кнопка. "
+            "Перпендикулярный срез: колесо или ↑/↓ ±1 мм (Shift ±5 мм); потяните цветную линию — "
+            "повернуть CPR. Ctrl+↑/↓: ±1 мм, Ctrl+←/→: поворот ±10°. Клик по линии в 3D — перейти. "
+            "MPR: клик переносит остальные срезы в точку; центр и линии перекрестья можно тянуть "
+            "(сдвиг и поворот срезов); левая кнопка — окно/уровень, колесо — листать срез."
         ),
         "units.mm": "мм",
         "units.deg": "°",
@@ -300,6 +314,18 @@ _STRINGS: Dict[str, Dict[str, str]] = {
         "wl.bone": "Bone",
         "wl.tooltip": "Window {window:.0f} HU, level {level:.0f} HU",
         "layout.show_axial": "Show axial slice",
+        "view.mode": "Mode:",
+        "view.mode.path": "Along the centerline",
+        "view.mode.mpr": "MPR (as in RadiAnt)",
+        "layout.template": "Layout:",
+        "layout.template.columns": "Two CPRs side by side",
+        "layout.template.grid": "2 × 2 grid",
+        "layout.template.large_first": "First view large",
+        "layout.reset": "Reset",
+        "layout.drag_hint": (
+            "Swap views by dragging: take a view by its coloured title bar and drop it on another view. "
+            "The borders between views can be dragged too."
+        ),
         "view.label.longitudinal": "CPR",
         "view.label.cpr1": "CPR 1",
         "view.label.cpr2": "CPR 2",
@@ -324,10 +350,12 @@ _STRINGS: Dict[str, Dict[str, str]] = {
         "nav.position_of": "{value:.1f} mm of {length:.1f} mm",
         "nav.no_curve": "No curve: draw one in the Centerline step.",
         "nav.help": (
-            "CPR: left button — drag the position (click — jump); wheel ±1 mm, Shift+wheel ±5 mm; "
-            "Ctrl+wheel — rotate CPR by ±5°; zoom — right button. "
-            "Perpendicular slice: wheel or Up/Down ±1 mm (with Shift ±5 mm). "
-            "Ctrl+Up/Down: ±1 mm, Ctrl+Left/Right: rotate by ±10°. Click the curve in 3D to jump there."
+            "Along the centerline. CPR: left button — drag the position (click — jump); wheel ±1 mm, "
+            "Shift+wheel ±5 mm; Ctrl+wheel — rotate CPR by ±5°; zoom — right button. "
+            "Perpendicular slice: wheel or Up/Down ±1 mm (Shift ±5 mm); drag a coloured line — rotate "
+            "the CPR. Ctrl+Up/Down: ±1 mm, Ctrl+Left/Right: rotate ±10°. Click the curve in 3D to jump. "
+            "MPR: a click moves the other slices to the point; drag the centre or the reference lines "
+            "(move and rotate slices); left drag — window/level, wheel — scroll."
         ),
         "units.mm": "mm",
         "units.deg": "°",

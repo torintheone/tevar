@@ -155,3 +155,19 @@ class StraightenedCpr:
         n0 = self._frame_at(s, 0.0)[2]
         b0 = np.cross(tangent, n0)
         return float(math.degrees(math.atan2(np.dot(rel, b0), np.dot(rel, n0))) % 360.0)
+
+
+def nearest_line_angle(direction_deg: float, current_deg: float) -> float:
+    """CPR angle for a line through the centre that points to ``direction_deg``.
+
+    The line also covers ``direction + 180``; of the two the one closer to ``current_deg`` is
+    returned, so grabbing either end of the line never mirrors the image.
+    """
+    a = direction_deg % 360.0
+    b = (a + 180.0) % 360.0
+
+    def distance(x: float) -> float:
+        return abs((x - current_deg + 180.0) % 360.0 - 180.0)
+
+    return a if distance(a) <= distance(b) else b
+

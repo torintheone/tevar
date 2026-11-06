@@ -70,3 +70,12 @@ def test_lateral_directions_stay_perpendicular(realistic_torus):
     lateral = cpr.lateral_directions(123.0)
     assert np.max(np.abs(np.einsum("ij,ij->i", lateral, cpr.tangents))) < 1e-9
     np.testing.assert_allclose(np.linalg.norm(lateral, axis=1), 1.0)
+
+
+def test_nearest_line_angle():
+    from aortaplan_core.centerline.cpr import nearest_line_angle
+
+    assert nearest_line_angle(30.0, 20.0) == pytest.approx(30.0)
+    assert nearest_line_angle(210.0, 20.0) == pytest.approx(30.0)  # the other end of the same line
+    assert nearest_line_angle(350.0, 5.0) == pytest.approx(350.0)
+    assert nearest_line_angle(100.0, 270.0) == pytest.approx(280.0)

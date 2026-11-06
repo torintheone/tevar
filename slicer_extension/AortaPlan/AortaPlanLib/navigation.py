@@ -7,13 +7,21 @@
 - a cursor point (also visible in 3D) and large numbers in the view corners.
 All geometry comes from the core (``CurvePath``, ``StraightenedCpr``).
 
-``ViewInteraction`` connects mouse and keyboard to the navigator:
+Two viewing modes:
+- ``MODE_PATH`` (along the centerline, above);
+- ``MODE_MPR`` (as in RadiAnt): axial, coronal and sagittal slices through a common point with
+  interactive reference lines (drag the centre to move, the lines to rotate); a click moves
+  the other slices to the clicked point; Shift+mouse move does the same (Slicer crosshair).
+Without a centerline (or while points are placed) the views are always MPR.
+
+``ViewInteraction`` connects mouse and keyboard to the navigator in MODE_PATH:
 - CPR views: left button drags the position (a click jumps), wheel +-1 mm (Shift +-5 mm),
   Ctrl+wheel rotates the CPR by +-5 deg, Up/Down +-1 mm; right-button zoom as usual;
-- perpendicular slice: wheel or Up/Down +-1 mm (Shift +-5 mm);
+- perpendicular slice: wheel or Up/Down +-1 mm (Shift +-5 mm); dragging one of the coloured
+  CPR lines rotates the CPRs;
 - 3D view: a click on the centerline jumps there;
 - Ctrl+Up/Down: +-1 mm, Ctrl+Left/Right: rotate by -+10 deg.
-While the module is active Shift+mouse move does not move the slices to the crosshair.
+In MODE_PATH Shift+mouse move does not move the slices to the crosshair.
 """
 
 import logging
@@ -23,7 +31,7 @@ import qt
 import slicer
 import vtk
 
-from aortaplan_core.centerline.cpr import StraightenedCpr
+from aortaplan_core.centerline.cpr import StraightenedCpr, nearest_line_angle
 from aortaplan_core.centerline.navigation import CurvePath
 
 from . import layout
@@ -46,6 +54,9 @@ STEP_MM = 1.0
 FAST_STEP_MM = 5.0
 ROTATION_STEP_DEG = 10.0
 WHEEL_ROTATION_STEP_DEG = 5.0
+LINE_GRAB_TOLERANCE_PX = 10.0
+MODE_PATH = "path"
+MODE_MPR = "mpr"
 
 # Columns are the screen X, screen Y and normal directions (Slicer's standard orientations).
 AXIAL_ROTATION = np.array([[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
@@ -86,6 +97,7 @@ class SliceNavigator:
         self.position = 0.0
         self.angle = 0.0
         self.frozen = False
+        self.mode = MODE_PATH
         self.crossFieldOfView = 80.0
         self.listeners = []
         self.overlays = {}
@@ -162,6 +174,21 @@ class SliceNavigator:
         if not self.frozen:
             self.rebuild()
 
+    @property
+    def navigating(self):
+        """Views follow the centerline (otherwise they are a free MPR)."""
+        return self.path is not None and not self.frozen and self.mode == MODE_PATH
+
+    def setMode(self, mode):
+        """MODE_PATH or MODE_MPR; entering MPR centres the slices on the current point."""
+        self.mode = MODE_MPR if mode == MODE_MPR else MODE_PATH
+        if self.mode == MODE_MPR:
+            center = self.path.point_at(self.position) if self.path is not None else None
+            self.showStandardViews(center)
+            self._notify()
+        else:
+            self.rebuild()
+
     def setFrozen(self, frozen):
         """While points are placed the views stay standard (axial/coronal/sagittal)."""
         self.frozen = bool(frozen)
@@ -182,11 +209,15 @@ class SliceNavigator:
             except ValueError as exc:
                 logging.warning("AortaPlan: cannot navigate along the curve: %s", exc)
                 self.path = self.cpr = None
+        if self.path is not None:
+            self.position = self.path.clamp(self.position)
+        if self.mode == MODE_MPR and self.path is not None and not self.frozen:
+            self._notify()  # free MPR: the views are left where the user put them
+            return
         if self.path is None or self.frozen:
             self.showStandardViews()
             self._notify()
             return
-        self.position = self.path.clamp(self.position)
         self._updateCprImages(fit=True)
         self.apply()
 
@@ -204,14 +235,17 @@ class SliceNavigator:
         if self.path is None:
             return
         self.position = self.path.clamp(float(position_mm))
-        self.apply()
+        if self.navigating:
+            self.apply()
+        else:
+            self._notify()
 
     def step(self, delta_mm):
         self.setPosition(self.position + delta_mm)
 
     def setAngle(self, angle_deg):
         self.angle = float(angle_deg) % 360.0
-        if self.path is not None and not self.frozen:
+        if self.navigating:
             self._updateCprImages(fit=False)
             self.apply()
         else:
@@ -242,7 +276,7 @@ class SliceNavigator:
 
     # ------------------------------------------------------------------ views
     def apply(self):
-        if self.path is None or self.frozen:
+        if not self.navigating:
             return
         cross = self.path.cross_section_frame(self.position)
         setSliceToRAS(self.crossNode, cross.slice_to_ras())
@@ -254,13 +288,18 @@ class SliceNavigator:
                 lateral = self.cpr.to_ras(1.0, self.position, self.angle + view.angleOffset) - cross.origin
                 half = AXIS_LINE_HALF_LENGTH_MM * lateral
                 setLine(self.axisLine(view), cross.origin - half, cross.origin + half)
+        axial = layout.findSliceNode(layout.AXIAL_VIEW)
+        if axial is not None:  # the optional axial view follows the position
+            axial.JumpSliceByOffsetting(*cross.origin)
         setSliceVisibleIn3D(self.crossNode, self.planeIn3D)
         self._updateOverlays()
         self._notify()
 
-    def showStandardViews(self):
-        """Axial / coronal / sagittal through the volume centre (no path, or placing points)."""
-        center = volumeCenterRas(self.volumeNode) if self.volumeNode is not None else np.zeros(3)
+    def showStandardViews(self, center=None):
+        """MPR: axial / coronal / sagittal through ``center`` (default: the volume centre)."""
+        if center is None:
+            center = volumeCenterRas(self.volumeNode) if self.volumeNode is not None else np.zeros(3)
+        center = np.asarray(center, dtype=float)
         for name, rotation in STANDARD_ROTATIONS.items():
             m = np.eye(4)
             m[:3, :3] = rotation
@@ -285,6 +324,10 @@ class SliceNavigator:
                 widget = layout.sliceWidget(name)
                 if widget is not None:
                     widget.sliceLogic().FitSliceToAll()
+                    layout.ensureSliceNode(name).JumpSliceByOffsetting(*center)  # FitSliceToAll recentres
+        crosshair = slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLCrosshairNode")
+        if crosshair is not None:
+            crosshair.SetCrosshairRAS(*center)
 
     def resetFieldsOfView(self):
         setFieldOfViewWidth(self.crossNode, self.crossFieldOfView)
@@ -320,7 +363,7 @@ class SliceNavigator:
     def showCrossSectionIn3D(self, visible):
         """Show the perpendicular slice in the 3D view (only while navigating along a path)."""
         self.planeIn3D = bool(visible)
-        setSliceVisibleIn3D(self.crossNode, self.planeIn3D and self.path is not None and not self.frozen)
+        setSliceVisibleIn3D(self.crossNode, self.planeIn3D and self.navigating)
 
     def _notify(self):
         for listener in list(self.listeners):
@@ -357,11 +400,13 @@ class ViewInteraction:
     def __init__(self, navigator):
         self.navigator = navigator
         self._observations = []  # (vtkObject, tag)
-        self._abortTags = {}  # (view name, event) -> observer tag, for events we may consume
+        self._abortTags = {}  # (view name, event) -> (interactor, observer tag), for events we may consume
         self._styles = {}  # view name -> interactor style
+        self._intersections = {}  # view name -> (slice display node, original settings)
         self._shortcuts = []
         self._press = {}
         self._scrubbing = None  # index of the CPR view being dragged
+        self._rotating = None  # index of the CPR whose line is being dragged in the perpendicular slice
         self._crosshairBehavior = None
         self.installed = False
 
@@ -369,38 +414,43 @@ class ViewInteraction:
     def install(self):
         if self.installed or slicer.util.mainWindow() is None:
             return
-        for name in (layout.CROSS_VIEW, *layout.CPR_VIEWS):
+        for name in layout.SLICE_VIEWS:
             widget = layout.sliceWidget(name)
             if widget is None:
                 continue
             view = widget.sliceView()
-            style = view.sliceViewInteractorStyle()
-            self._styles[name] = style
-            # Shift is the fast-scroll modifier here: Shift+mouse move must not set the crosshair.
-            style.SetActionEnabled(slicer.vtkMRMLSliceViewInteractorStyle.SetCrosshairPosition, False)
+            self._styles[name] = view.sliceViewInteractorStyle()
             interactor = view.interactor()
             for event in (vtk.vtkCommand.MouseWheelForwardEvent, vtk.vtkCommand.MouseWheelBackwardEvent):
                 tag = self._observe(interactor, event, lambda caller, ev, name=name: self._onWheel(caller, ev, name))
                 self._abortTags[(name, event)] = (interactor, tag)
-            self._observe(interactor, vtk.vtkCommand.KeyPressEvent, self._onKey)
-            if name in layout.CPR_VIEWS:
-                index = layout.CPR_VIEWS.index(name)
-                self._observe(
-                    interactor, vtk.vtkCommand.LeftButtonPressEvent, lambda caller, ev, i=index: self._onCprPress(caller, i)
+            tag = self._observe(
+                interactor, vtk.vtkCommand.LeftButtonPressEvent, lambda caller, ev, name=name: self._onPress(caller, name)
+            )
+            self._abortTags[(name, vtk.vtkCommand.LeftButtonPressEvent)] = (interactor, tag)
+            self._observe(interactor, vtk.vtkCommand.MouseMoveEvent, lambda caller, ev, name=name: self._onMove(caller, name))
+            self._observe(
+                interactor, vtk.vtkCommand.LeftButtonReleaseEvent, lambda caller, ev, name=name: self._onRelease(caller, name)
+            )
+            if name != layout.AXIAL_VIEW:
+                self._observe(interactor, vtk.vtkCommand.KeyPressEvent, self._onKey)
+            displayNode = widget.sliceLogic().GetSliceDisplayNode()
+            if displayNode is not None:
+                original = (
+                    displayNode.GetIntersectingSlicesVisibility(),
+                    displayNode.GetIntersectingSlicesInteractive(),
+                    displayNode.GetIntersectingSlicesTranslationEnabled(),
+                    displayNode.GetIntersectingSlicesRotationEnabled(),
                 )
-                self._observe(interactor, vtk.vtkCommand.MouseMoveEvent, lambda caller, ev, i=index: self._onCprMove(caller, i))
-                self._observe(interactor, vtk.vtkCommand.LeftButtonReleaseEvent, self._onCprRelease)
+                self._intersections[name] = (displayNode, original)
         threeD = layout.threeDWidget()
         if threeD is not None:
             interactor = threeD.threeDView().interactor()
             self._observe(interactor, vtk.vtkCommand.LeftButtonPressEvent, self._on3DPress)
             self._observe(interactor, vtk.vtkCommand.LeftButtonReleaseEvent, self._on3DRelease)
-        # Slicer moves every slice view to the crosshair on Shift+mouse move ("jump slices"),
-        # which would pull the perpendicular and CPR views off the centerline.
         crosshair = self._crosshairNode()
         if crosshair is not None:
             self._crosshairBehavior = crosshair.GetCrosshairBehavior()
-            crosshair.SetCrosshairBehavior(slicer.vtkMRMLCrosshairNode.NoAction)
         mainWindow = slicer.util.mainWindow()
         for sequence, callback in (
             ("Ctrl+Up", lambda: self.navigator.step(STEP_MM)),
@@ -427,6 +477,12 @@ class ViewInteraction:
             ):
                 style.SetActionEnabled(action, True)
         self._styles = {}
+        for displayNode, (visible, interactive, translation, rotation) in self._intersections.values():
+            displayNode.SetIntersectingSlicesVisibility(visible)
+            displayNode.SetIntersectingSlicesInteractive(interactive)
+            displayNode.SetIntersectingSlicesTranslationEnabled(translation)
+            displayNode.SetIntersectingSlicesRotationEnabled(rotation)
+        self._intersections = {}
         crosshair = self._crosshairNode()
         if crosshair is not None and self._crosshairBehavior is not None:
             crosshair.SetCrosshairBehavior(self._crosshairBehavior)
@@ -436,7 +492,7 @@ class ViewInteraction:
             shortcut.setParent(None)
             shortcut.deleteLater()
         self._shortcuts = []
-        self._scrubbing = None
+        self._scrubbing = self._rotating = None
         self.installed = False
 
     @staticmethod
@@ -444,12 +500,31 @@ class ViewInteraction:
         return slicer.mrmlScene.GetFirstNodeByClass("vtkMRMLCrosshairNode")
 
     def updateBrowsing(self):
-        """Standard slice browsing while there is no path; along-the-path navigation otherwise."""
-        navigating = self._navigating()
-        for name, style in self._styles.items():
-            style.SetActionEnabled(slicer.vtkMRMLSliceViewInteractorStyle.BrowseSlice, not navigating)
+        """MODE_PATH: navigation along the centerline. MPR: standard Slicer browsing + RadiAnt-like lines."""
+        navigating = self.navigator.navigating
+        style = slicer.vtkMRMLSliceViewInteractorStyle
+        for name, interactorStyle in self._styles.items():
+            if name == layout.AXIAL_VIEW:
+                continue  # the axial view keeps Slicer's behaviour in both modes
+            interactorStyle.SetActionEnabled(style.BrowseSlice, not navigating)
+            interactorStyle.SetActionEnabled(style.SetCrosshairPosition, not navigating)
             if name in layout.CPR_VIEWS:  # left drag scrubs the position instead of window/level
-                style.SetActionEnabled(slicer.vtkMRMLSliceViewInteractorStyle.AdjustWindowLevelBackground, not navigating)
+                interactorStyle.SetActionEnabled(style.AdjustWindowLevelBackground, not navigating)
+        for displayNode, _ in self._intersections.values():
+            displayNode.SetIntersectingSlicesVisibility(not navigating)
+            displayNode.SetIntersectingSlicesInteractive(not navigating)
+            displayNode.SetIntersectingSlicesTranslationEnabled(True)
+            displayNode.SetIntersectingSlicesRotationEnabled(True)
+        crosshair = self._crosshairNode()
+        if crosshair is not None:
+            if navigating:
+                # Shift+mouse move would otherwise move every slice to the crosshair.
+                crosshair.SetCrosshairBehavior(slicer.vtkMRMLCrosshairNode.NoAction)
+            else:
+                original = self._crosshairBehavior
+                if original is None or original == slicer.vtkMRMLCrosshairNode.NoAction:
+                    original = slicer.vtkMRMLCrosshairNode.OffsetJumpSlice
+                crosshair.SetCrosshairBehavior(original)
 
     def _observe(self, obj, event, callback):
         tag = obj.AddObserver(event, callback, 10.0)
@@ -464,17 +539,48 @@ class ViewInteraction:
             if command is not None:
                 command.SetAbortFlag(1)
 
-    # ------------------------------------------------------------------ handlers
-    def _navigating(self):
-        return self.navigator.path is not None and not self.navigator.frozen
-
+    # ------------------------------------------------------------------ helpers
     @staticmethod
     def _viewTransformMode():
         interactionNode = slicer.app.applicationLogic().GetInteractionNode()
         return interactionNode.GetCurrentInteractionMode() == slicer.vtkMRMLInteractionNode.ViewTransform
 
+    @staticmethod
+    def _plainClick(interactor):
+        return not (interactor.GetShiftKey() or interactor.GetControlKey() or interactor.GetAltKey())
+
+    @staticmethod
+    def _xyToRas(name, x, y):
+        node = layout.ensureSliceNode(name)
+        return np.array(node.GetXYToRAS().MultiplyPoint([float(x), float(y), 0.0, 1.0])[:3])
+
+    def _cprLineUnder(self, x, y):
+        """Index of the CPR plane line (in the perpendicular slice) under a pixel, or None."""
+        rasToXy = vtk.vtkMatrix4x4()
+        vtk.vtkMatrix4x4.Invert(self.navigator.crossNode.GetXYToRAS(), rasToXy)
+        best, bestDistance = None, LINE_GRAB_TOLERANCE_PX
+        for index, view in enumerate(self.navigator.cprViews):
+            points = slicer.util.arrayFromMarkupsControlPoints(self.navigator.axisLine(view), world=True)
+            a, b = (np.array(rasToXy.MultiplyPoint([*p, 1.0])[:2]) for p in points)
+            ab = b - a
+            t = np.clip(np.dot(np.array([x, y]) - a, ab) / max(np.dot(ab, ab), 1e-9), 0.0, 1.0)
+            distance = float(np.linalg.norm(a + t * ab - np.array([x, y])))
+            if distance < bestDistance:
+                best, bestDistance = index, distance
+        return best
+
+    def _rotateTowards(self, x, y):
+        ras = self._xyToRas(layout.CROSS_VIEW, x, y)
+        direction = self.navigator.cpr.angle_through(ras)
+        if direction is None:
+            return
+        offset = self.navigator.cprViews[self._rotating].angleOffset
+        current = (self.navigator.angle + offset) % 360.0
+        self.navigator.setAngle(nearest_line_angle(direction, current) - offset)
+
+    # ------------------------------------------------------------------ handlers
     def _onWheel(self, interactor, event, name):
-        if not self._navigating():
+        if not self.navigator.navigating or name == layout.AXIAL_VIEW:
             return
         forward = event == "MouseWheelForwardEvent"
         if interactor.GetControlKey():
@@ -486,7 +592,7 @@ class ViewInteraction:
         self.navigator.step(step if forward else -step)
 
     def _onKey(self, interactor, event):
-        if not self._navigating() or interactor.GetControlKey():
+        if not self.navigator.navigating or interactor.GetControlKey():
             return
         key = interactor.GetKeySym()
         step = FAST_STEP_MM if interactor.GetShiftKey() else STEP_MM
@@ -495,31 +601,50 @@ class ViewInteraction:
         elif key == "Down":
             self.navigator.step(-step)
 
-    def _onCprPress(self, interactor, index):
-        if (
-            not self._navigating()
-            or not self._viewTransformMode()
-            or interactor.GetShiftKey()
-            or interactor.GetControlKey()
-            or interactor.GetAltKey()
-        ):
+    def _onPress(self, interactor, name):
+        x, y = interactor.GetEventPosition()
+        self._press[name] = (x, y)
+        if not self.navigator.navigating or not self._viewTransformMode() or not self._plainClick(interactor):
             return
-        self._scrubbing = index
-        self.navigator.jumpToCprPixel(index, *interactor.GetEventPosition())
+        if name in layout.CPR_VIEWS:
+            self._scrubbing = layout.CPR_VIEWS.index(name)
+            self.navigator.jumpToCprPixel(self._scrubbing, x, y)
+        elif name == layout.CROSS_VIEW and self.navigator.cpr is not None:
+            line = self._cprLineUnder(x, y)
+            if line is not None:
+                self._rotating = line
+                self._abort(name, vtk.vtkCommand.LeftButtonPressEvent)  # no window/level drag
 
-    def _onCprMove(self, interactor, index):
-        if self._scrubbing == index and self._navigating():
-            self.navigator.jumpToCprPixel(index, *interactor.GetEventPosition())
+    def _onMove(self, interactor, name):
+        x, y = interactor.GetEventPosition()
+        if self._scrubbing is not None and name in layout.CPR_VIEWS and self.navigator.navigating:
+            self.navigator.jumpToCprPixel(self._scrubbing, x, y)
+        elif self._rotating is not None and name == layout.CROSS_VIEW and self.navigator.navigating:
+            self._rotateTowards(x, y)
 
-    def _onCprRelease(self, interactor, event):
-        self._scrubbing = None
+    def _onRelease(self, interactor, name):
+        start = self._press.pop(name, None)
+        self._scrubbing = self._rotating = None
+        if start is None or self.navigator.navigating or not self._viewTransformMode() or not self._plainClick(interactor):
+            return
+        x, y = interactor.GetEventPosition()
+        if abs(x - start[0]) > CLICK_TOLERANCE_PX or abs(y - start[1]) > CLICK_TOLERANCE_PX:
+            return  # a window/level drag, not a click
+        # MPR (as in RadiAnt): a click moves the other slices to the clicked point.
+        ras = self._xyToRas(name, x, y)
+        crosshair = self._crosshairNode()
+        if crosshair is not None:
+            crosshair.SetCrosshairRAS(*ras)
+        slicer.vtkMRMLSliceNode.JumpAllSlices(
+            slicer.mrmlScene, *ras, slicer.vtkMRMLSliceNode.OffsetJumpSlice, -1, layout.ensureSliceNode(name)
+        )
 
     def _on3DPress(self, interactor, event):
-        self._press[interactor] = interactor.GetEventPosition()
+        self._press["3D"] = interactor.GetEventPosition()
 
     def _on3DRelease(self, interactor, event):
-        start = self._press.pop(interactor, None)
-        if start is None or not self._navigating() or not self._viewTransformMode():
+        start = self._press.pop("3D", None)
+        if start is None or not self.navigator.navigating or not self._viewTransformMode():
             return
         x, y = interactor.GetEventPosition()
         if abs(x - start[0]) > CLICK_TOLERANCE_PX or abs(y - start[1]) > CLICK_TOLERANCE_PX:
