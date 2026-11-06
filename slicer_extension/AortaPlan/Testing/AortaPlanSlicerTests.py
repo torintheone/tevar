@@ -783,3 +783,275 @@ class AortaPlanAutoCenterlineGuiTests(unittest.TestCase):
         self.assertIsNotNone(widget._parameterNode.centerline)
         widget.ui.pathComboBox.currentIndex = 1
         self.assertIs(widget.navigator.curveNode, slicer.mrmlScene.GetNodeByID(widget.ui.pathComboBox.itemData(1)))
+
+
+# ---------------------------------------------------------------------------- stage 4
+
+_ANEURYSM = {}
+
+
+def _aneurysmPhantom():
+    """Built once per test run (about 6 s)."""
+    if "phantom" not in _ANEURYSM:
+        from aortaplan_core.phantoms import fusiform_aneurysm
+
+        _ANEURYSM["phantom"] = fusiform_aneurysm()
+    return _ANEURYSM["phantom"]
+
+
+def _aneurysmSetup():
+    from AortaPlanLib.bridge import volumeToNode
+    from AortaPlanLib.measurements import MeasurementController
+    from AortaPlanLib.navigation import SliceNavigator
+
+    phantom = _aneurysmPhantom()
+    volume = volumeToNode(phantom.volume, "aneurysm")
+    curve = _curveFromPoints(phantom.truth.centerline_points, name="AneurysmCurve", every=40)
+    navigator = SliceNavigator()
+    navigator.setVolume(volume)
+    navigator.setCurve(curve)
+    controller = MeasurementController(navigator)
+    saved = []
+    controller.persist = saved.append
+    return phantom, volume, curve, navigator, controller, saved
+
+
+def _lineLength(node):
+    points = slicer.util.arrayFromMarkupsControlPoints(node, world=True)
+    return float(np.linalg.norm(points[1] - points[0]))
+
+
+class AortaPlanMeasurementTests(unittest.TestCase):
+    """Stage 4 in Slicer: contours, editing, saved measurements, markers, tools (no main window needed)."""
+
+    def setUp(self):
+        slicer.mrmlScene.Clear(0)
+
+    def tearDown(self):
+        slicer.mrmlScene.Clear(0)
+
+    def test_section_contours_and_feret_lines(self):
+        from aortaplan_core.crosssection import LUMEN, OUTER
+
+        phantom, volume, curve, navigator, controller, saved = _aneurysmSetup()
+        s = phantom.truth.expected["max_outer_s_mm"]
+        navigator.setPosition(s)
+        controller.setActive(True)
+        metrics = controller.sectionMetrics()
+        self.assertAlmostEqual(metrics[OUTER].max_diameter_mm, 60.0, delta=0.3)
+        self.assertAlmostEqual(metrics[OUTER].min_diameter_mm, 54.0, delta=0.3)
+        self.assertAlmostEqual(metrics[LUMEN].mean_diameter_mm, 30.0, delta=0.3)
+        outer, lumen = metrics[OUTER], metrics[LUMEN]
+        METRICS["aneurysm in Slicer: outer max/min, lumen mean, mm"] = (
+            f"{outer.max_diameter_mm:.2f} / {outer.min_diameter_mm:.2f} / {lumen.mean_diameter_mm:.2f}"
+        )
+        normal = navigator.path.tangent_at(s)
+        origin = navigator.path.point_at(s)
+        for kind in (LUMEN, OUTER):
+            node = controller.contourNode(kind, create=False)
+            self.assertIsNotNone(node)
+            self.assertTrue(node.GetDisplayNode().GetVisibility())
+            self.assertGreaterEqual(node.GetNumberOfControlPoints(), 12)
+            points = slicer.util.arrayFromMarkupsControlPoints(node, world=True)
+            np.testing.assert_allclose((points - origin) @ normal, 0.0, atol=1e-6)  # in the section plane
+            # Shown only in the perpendicular view.
+            display = node.GetDisplayNode()
+            self.assertEqual(display.GetNumberOfViewNodeIDs(), 1)
+            self.assertEqual(display.GetNthViewNodeID(0), navigator.crossNode.GetID())
+            m = metrics[kind]
+            self.assertAlmostEqual(_lineLength(controller.feretNode(kind, "max")), m.max_diameter_mm, places=3)
+            self.assertAlmostEqual(_lineLength(controller.feretNode(kind, "min")), m.min_diameter_mm, places=3)
+        controller.setActive(False)
+        self.assertFalse(controller.contourNode(OUTER, create=False).GetDisplayNode().GetVisibility())
+
+    def test_edit_contour_autosave_and_restore(self):
+        from aortaplan_core.crosssection import OUTER, MeasurementStore
+
+        phantom, volume, curve, navigator, controller, saved = _aneurysmSetup()
+        navigator.setPosition(100.0)
+        controller.setActive(True)
+        before = controller.sectionMetrics()[OUTER].area_mm2
+        node = controller.contourNode(OUTER, create=False)
+        points = slicer.util.arrayFromMarkupsControlPoints(node, world=True)
+        centre = points.mean(axis=0)
+        moved = points[0] + 5.0 * (points[0] - centre) / np.linalg.norm(points[0] - centre)
+        node.SetNthControlPointPositionWorld(0, *moved)  # like dragging a point
+        self.assertTrue(controller.dirty)
+        self.assertEqual(controller.current.outer.source, "manual")
+        edited = controller.sectionMetrics()[OUTER].area_mm2
+        self.assertGreater(edited, before + 20.0)
+        # Moving on saves the edit; coming back shows it again.
+        navigator.setPosition(120.0)
+        controller.update()
+        self.assertEqual(len(controller.store.measurements), 1)
+        self.assertFalse(controller.dirty)
+        navigator.setPosition(100.0)
+        controller.update()
+        self.assertIsNotNone(controller.currentName)
+        self.assertAlmostEqual(controller.sectionMetrics()[OUTER].area_mm2, edited, delta=0.5)
+        store = MeasurementStore.from_json(saved[-1])
+        self.assertEqual(store.measurements[0].measurement.outer.source, "manual")
+        # "Recompute" discards the edit.
+        controller.recompute()
+        self.assertEqual(len(controller.store.measurements), 0)
+        self.assertAlmostEqual(controller.sectionMetrics()[OUTER].area_mm2, before, delta=1.0)
+
+    def test_markers_ticks_distances_and_evar(self):
+        from aortaplan_core.crosssection import MeasurementStore
+        from aortaplan_core.i18n import tr
+
+        phantom, volume, curve, navigator, controller, saved = _aneurysmSetup()
+        controller.addMarker(tr("marker.lowest_renal"), 30.0)
+        controller.addMarker(tr("marker.neck_end"), 55.0)
+        navigator.setPosition(180.0)
+        controller.addMarker(tr("marker.aortic_bifurcation"))  # at the current position
+        markers = controller.markers()
+        self.assertEqual([m.key for m in markers], ["lowest_renal", "neck_end", "aortic_bifurcation"])
+        self.assertAlmostEqual(markers[2].arc_length_mm, 180.0, delta=0.05)
+        for view in navigator.cprViews:  # ticks with names on both CPRs, in the CPR plane
+            ticks = controller.tickNode(view, create=False)
+            self.assertEqual(ticks.GetNumberOfControlPoints(), 3)
+            self.assertEqual(ticks.GetNthControlPointLabel(1), tr("marker.neck_end"))
+            points = slicer.util.arrayFromMarkupsControlPoints(ticks, world=True)
+            np.testing.assert_allclose(points[:, 2], view.origin[2], atol=1e-6)
+        distance, curvature = controller.distance(0, 2)
+        self.assertAlmostEqual(distance.along_mm, 150.0, delta=0.1)
+        self.assertAlmostEqual(distance.straight_mm, 150.0, delta=0.1)
+        self.assertAlmostEqual(curvature.greater_mm, 150.0, delta=0.5)  # straight aorta
+        summary = "\n".join(controller.evarSummary())
+        self.assertIn(tr("evar.alpha", value="0,0"), summary)
+        self.assertIn(tr("evar.neck_length", value="25,0"), summary)
+        controller.renameMarker(1, "Шейка")
+        controller.moveMarker(1, 60.0)
+        self.assertEqual(controller.markers()[1].name, "Шейка")
+        self.assertAlmostEqual(controller.markers()[1].arc_length_mm, 60.0, delta=0.05)
+        controller.deleteMarker(0)
+        self.assertEqual(len(controller.markers()), 2)
+        store = MeasurementStore.from_json(saved[-1])
+        self.assertEqual([m.name for m in store.markers], ["Шейка", tr("marker.aortic_bifurcation")])
+
+    def test_profile_and_maximum_between_markers(self):
+        from aortaplan_core.crosssection import OUTER
+
+        phantom, volume, curve, navigator, controller, saved = _aneurysmSetup()
+        e = phantom.truth.expected
+        profile = controller.computeProfile()
+        s, value = profile.maximum(OUTER)
+        self.assertAlmostEqual(s, e["max_outer_s_mm"], delta=4.0)
+        result = controller.findMaximum(e["sac_start_s_mm"], e["sac_end_s_mm"])
+        self.assertAlmostEqual(result.value_mm, 60.0, delta=0.3)
+        self.assertAlmostEqual(navigator.position, result.arc_length_mm, places=3)
+        marker = [m for m in controller.markers() if m.key == "max_diameter"]
+        self.assertEqual(len(marker), 1)
+        self.assertAlmostEqual(marker[0].arc_length_mm, result.arc_length_mm, delta=0.05)
+        controller.findMaximum(e["sac_start_s_mm"], e["max_outer_s_mm"] - 20.0)  # moves the same marker
+        self.assertEqual(len([m for m in controller.markers() if m.key == "max_diameter"]), 1)
+
+    def test_length_tool_in_cpr(self):
+        phantom, volume, curve, navigator, controller, saved = _aneurysmSetup()
+        controller.startLength()
+        self.assertFalse(controller.lengthClick(0, 5.0, 90.0))
+        self.assertTrue(controller.lengthClick(0, -3.0, 40.0))
+        a, b, length = controller.lengthResult
+        self.assertEqual((a, b), (40.0, 90.0))
+        self.assertAlmostEqual(length, 50.0)
+        node = controller.lengthNode(navigator.cprViews[0], create=False)
+        self.assertAlmostEqual(_lineLength(node), 50.0, delta=0.6)  # drawn in the CPR plane
+        self.assertIn("50,0", node.GetName())
+
+
+@unittest.skipIf(slicer.util.mainWindow() is None, "the module GUI needs the main window (--slicer-gui)")
+class AortaPlanMeasurementGuiTests(unittest.TestCase):
+    def setUp(self):
+        slicer.mrmlScene.Clear(0)
+
+    def tearDown(self):
+        slicer.util.selectModule("Welcome")
+        slicer.mrmlScene.Clear(0)
+
+    def _openWithAneurysm(self):
+        from AortaPlanLib.bridge import volumeToNode
+
+        slicer.util.selectModule("AortaPlan")
+        widget = slicer.modules.aortaplan.widgetRepresentation().self()
+        phantom = _aneurysmPhantom()
+        volume = volumeToNode(phantom.volume, "aneurysm")
+        widget.ui.volumeSelector.setCurrentNode(volume)
+        curve = _curveFromPoints(phantom.truth.centerline_points, name="AneurysmCurve", every=40)
+        widget.ui.curveSelector.setCurrentNode(curve)
+        widget.setCurrentStep(2)
+        widget.navigator.setPosition(100.0)
+        widget.measurements.update(force=True)
+        slicer.app.processEvents()
+        slicer.util.forceRenderAllViews()
+        return widget, phantom
+
+    def test_measurement_step(self):
+        import time
+
+        from aortaplan_core.i18n import tr
+        from AortaPlanLib import layout
+
+        widget, phantom = self._openWithAneurysm()
+        ui = widget.ui
+        self.assertTrue(widget.measurementsPanel.visible)
+        self.assertNotEqual(ui.metricsTable.item(1, 1).text(), "—")  # outer max diameter shown
+        self.assertIn("60", ui.metricsTable.item(1, 1).text())
+        # M places a marker with the selected name (shortcut and view key).
+        ui.markerNameComboBox.currentIndex = ui.markerNameComboBox.findText(tr("marker.max_diameter"))
+        widget.interaction._markerKey()
+        self.assertEqual(ui.markersTable.rowCount, 1)
+        widget.interaction._lastMarkerKey = 0.0
+        cross = layout.sliceWidget(layout.CROSS_VIEW).sliceView().interactor()
+        cross.SetEventInformation(10, 10, 0, 0, "m", 0, "m")
+        cross.InvokeEvent(vtk.vtkCommand.KeyPressEvent)
+        self.assertEqual(ui.markersTable.rowCount, 2)
+        # Marker by a click on the CPR.
+        ui.placeMarkerByClickButton.checked = True
+        view = widget.navigator.cprViews[0]
+        cpr = layout.sliceWidget(layout.LONGITUDINAL_VIEW).sliceView().interactor()
+        x, y = view.xyFromCpr(0.0, 70.0)
+        cpr.SetEventInformation(int(round(x)), int(round(y)), 0, 0)
+        cpr.InvokeEvent(vtk.vtkCommand.LeftButtonPressEvent)
+        cpr.InvokeEvent(vtk.vtkCommand.LeftButtonReleaseEvent)
+        self.assertFalse(ui.placeMarkerByClickButton.checked)
+        self.assertEqual(ui.markersTable.rowCount, 3)
+        self.assertAlmostEqual(widget.navigator.position, 70.0, delta=1.5)
+        # Length tool: two clicks on the CPR.
+        ui.lengthToolButton.checked = True
+        for s in (40.0, 90.0):
+            x, y = view.xyFromCpr(0.0, s)
+            cpr.SetEventInformation(int(round(x)), int(round(y)), 0, 0)
+            cpr.InvokeEvent(vtk.vtkCommand.LeftButtonPressEvent)
+            cpr.InvokeEvent(vtk.vtkCommand.LeftButtonReleaseEvent)
+        self.assertFalse(ui.lengthToolButton.checked)
+        self.assertAlmostEqual(widget.measurements.lengthResult[2], 50.0, delta=1.5)
+        self.assertIn(tr("tools.length.result", length="", a="", b="")[:10], ui.lengthResultLabel.text)
+        # A press on a contour control point is left to Slicer (no CPR rotation, no position jump).
+        widget.navigator.setPosition(100.0)
+        widget.measurements.update(force=True)
+        node = widget.measurements.contourNode("outer", create=False)
+        point = slicer.util.arrayFromMarkupsControlPoints(node, world=True)[0]
+        rasToXy = vtk.vtkMatrix4x4()
+        vtk.vtkMatrix4x4.Invert(widget.navigator.crossNode.GetXYToRAS(), rasToXy)
+        x, y = rasToXy.MultiplyPoint([*point, 1.0])[:2]
+        self.assertTrue(widget.measurements.isOverContourPoint(layout.CROSS_VIEW, x, y))
+        # The plot: compute, click jumps.
+        ui.computeProfileButton.click()
+        self.assertIsNotNone(widget.measurements.profile)
+        widget.measurementsPanel.onPlotClicked(120.0)
+        self.assertAlmostEqual(widget.navigator.position, 120.0, places=3)
+        # Saved measurements survive in the parameter node.
+        ui.saveMeasurementButton.click()
+        self.assertEqual(ui.savedTable.rowCount, 1)
+        self.assertIn('"measurements"', widget._parameterNode.measurementsJson)
+        # Scrolling with live contours (informational number; the contour follows after a short pause).
+        positions = np.linspace(20.0, 170.0, 20)
+        start = time.perf_counter()
+        for s in positions:
+            widget.navigator.setPosition(s)
+            widget.measurements.update()
+            slicer.util.forceRenderAllViews()
+        perFrame = (time.perf_counter() - start) / len(positions)
+        METRICS["live contours: update + render per section, ms"] = round(perFrame * 1000, 1)
+        self.assertLess(perFrame, 0.25)

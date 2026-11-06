@@ -68,6 +68,7 @@ class AortaPlanParameterNode:
     viewMode: str = "path"  # "path" (along the centerline) or "mpr"
     windowLevelPreset: str = "cta"
     centerlineMethod: str = "vmtk"  # chosen by the user on Panoramix (stage 2)
+    measurementsJson: str = ""  # saved section measurements (aortaplan_core.crosssection.MeasurementStore)
 
 
 STEP_KEYS = [
@@ -80,10 +81,10 @@ STEP_KEYS = [
     "wizard.step.printing",
 ]
 #: Development stage (SPEC section 8) in which each placeholder step is implemented.
-PLACEHOLDER_STAGES = {3: 4, 4: 5, 5: 6, 6: 7, 7: 8}
+PLACEHOLDER_STAGES = {4: 5, 5: 6, 6: 7, 7: 8}
 PRESET_BUTTONS = {"cta": "wlCtaButton", "calcium": "wlCalciumButton", "soft_tissue": "wlSoftTissueButton", "bone": "wlBoneButton"}
-STEP_STUDY, STEP_CENTERLINE = 0, 1
-DEVELOPMENT_STAGE = 3  # last implemented stage of SPEC section 8, shown under the disclaimer
+STEP_STUDY, STEP_CENTERLINE, STEP_MEASUREMENTS = 0, 1, 2
+DEVELOPMENT_STAGE = 4  # last implemented stage of SPEC section 8, shown under the disclaimer
 
 
 #
@@ -108,6 +109,8 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.builder = None
         self.segmentEditor = None
         self._rebuildAfterPlacement = False
+        self.measurements = None
+        self.measurementsPanel = None
 
     # ------------------------------------------------------------------ setup
     def setup(self):
@@ -135,6 +138,7 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.interaction = ViewInteraction(self.navigator)
         self._applyStrings()
         self._setupSeriesTable()
+        self._setupMeasurements()
 
         # Wizard
         self._stepButtons = [getattr(self.ui, f"step{i + 1}Button") for i in range(len(STEP_KEYS))]
@@ -281,6 +285,26 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         ui.recheckButton.text = tr("env.recheck")
         ui.installPackagesButton.text = tr("deps.install_button")
 
+    def _setupMeasurements(self):
+        from AortaPlanLib.measurements import MeasurementController
+        from AortaPlanLib.measurementsui import MeasurementsPanel
+
+        self.measurements = MeasurementController(self.navigator)
+        self.measurements.persist = self._persistMeasurements
+        self.measurementsPanel = MeasurementsPanel(
+            self.ui, self.measurements, self.navigator, self.interaction, self._createProgress
+        )
+        self.interaction.pressFilters.append(self.measurements.isOverContourPoint)
+        self.interaction.markerKeyHandler = self.measurementsPanel.onMarkerKey
+
+    def _persistMeasurements(self, text):
+        if self._parameterNode is not None:
+            self._parameterNode.measurementsJson = text
+
+    def _createProgress(self, labelKey):
+        dialog = slicer.util.createProgressDialog(windowTitle=tr("progress.title"), labelText=tr(labelKey))
+        return dialog, self._progressCallback(dialog)
+
     def _setupSeriesTable(self):
         table = self.ui.seriesTable
         columns = ["study.col.patient", "study.col.study", "study.col.series", "study.col.images",
@@ -300,6 +324,8 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._deactivateViews()
         if self.appMode is not None:
             self.appMode.setEnabled(False)
+        if self.measurements is not None:
+            self.measurements.cleanup()
         if self.navigator is not None:
             self.navigator.cleanup()
         self.removeObservers()
@@ -329,9 +355,11 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.navigator.setCurve(self._parameterNode.centerline if self._parameterNode else None)
         self.navigator.showCrossSectionIn3D(True)
         self.navigator.attachOverlays()
+        self.measurements.attachOverlay()
         self.interaction.install()
         self.setViewMode(self._parameterNode.viewMode if self._parameterNode else "path")
         self.dragSwapper.install()
+        self.measurementsPanel.setVisible(self.ui.stepStack.currentIndex == STEP_MEASUREMENTS)
 
     def _onLayoutRebuilt(self):
         """The views were re-arranged: re-attach the interaction, overlays and title-bar dragging."""
@@ -341,6 +369,7 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.navigator.detachOverlays()
         self.navigator.rebuild()  # CPR views are re-fitted to their new size
         self.navigator.attachOverlays()
+        self.measurements.attachOverlay()
         self.interaction.install()
         self.dragSwapper.install()
 
@@ -350,6 +379,8 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._active = False
         if self.segmentEditor is not None:
             self.segmentEditor.setActiveEffect(None)
+        self.measurementsPanel.setVisible(False)
+        self.measurements.detachOverlay()
         self.dragSwapper.uninstall()
         self.interaction.uninstall()
         self.navigator.detachOverlays()
@@ -357,6 +388,7 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.layoutController.deactivate()
 
     def onSceneStartClose(self, caller, event):
+        self.measurements.reset()
         self.navigator.reset()
         self.setParameterNode(None)
 
@@ -387,6 +419,7 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self._updatingGui = False
         self.navigator.angle = parameterNode.cprAngleDeg
         self.navigator.position = parameterNode.positionMm
+        self.measurements.loadJson(parameterNode.measurementsJson)
         self._updateVolumeInfo()
         self._updateCurveInfo()
         self._updatePointsInfo()
@@ -400,6 +433,8 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._stepButtons[index].checked = True
         if self._parameterNode is not None:
             self._parameterNode.currentStep = index
+        if self.measurementsPanel is not None and self._active:
+            self.measurementsPanel.setVisible(index == STEP_MEASUREMENTS)
         self._updateButtons()
 
     def _updateButtons(self):
@@ -808,6 +843,10 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if self._parameterNode is not None and path is not None:
             self._parameterNode.positionMm = self.navigator.position
             self._parameterNode.cprAngleDeg = self.navigator.angle
+        if self.measurements is not None:
+            self.measurements.onNavigationChanged()
+            if self.measurementsPanel.visible:
+                self.measurementsPanel.plot.setPosition(self.navigator.position if path is not None else None)
         self.interaction.updateBrowsing()
         self._updateCurveInfo()
         self._updateButtons()

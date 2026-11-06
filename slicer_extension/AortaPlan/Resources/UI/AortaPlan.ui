@@ -409,17 +409,307 @@
        </item>
       </layout>
      </widget>
-     <widget class="QWidget" name="placeholderPage3">
-      <layout class="QVBoxLayout" name="placeholderLayout3">
+     <widget class="QWidget" name="measurementsPage">
+      <layout class="QVBoxLayout" name="measurementsPageLayout">
        <item>
-        <widget class="QLabel" name="placeholderLabel3">
-         <property name="wordWrap">
-          <bool>true</bool>
+        <widget class="ctkCollapsibleButton" name="sectionCollapsibleButton">
+         <property name="collapsed">
+          <bool>false</bool>
          </property>
+         <layout class="QVBoxLayout" name="sectionCollapsibleButtonLayout">
+          <item>
+           <widget class="QCheckBox" name="liveContourCheckBox">
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="outerWallCheckBox">
+            <property name="checked">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="contourButtonsLayout">
+            <item>
+             <widget class="QPushButton" name="recomputeContourButton" />
+            </item>
+            <item>
+             <widget class="QPushButton" name="saveMeasurementButton" />
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QTableWidget" name="metricsTable">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>230</height>
+             </size>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="contourStatusLabel">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="savedTitleLabel" />
+          </item>
+          <item>
+           <widget class="QTableWidget" name="savedTable">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>120</height>
+             </size>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="savedButtonsLayout">
+            <item>
+             <widget class="QPushButton" name="deleteMeasurementButton" />
+            </item>
+            <item>
+             <widget class="QLabel" name="savedHintLabel">
+              <property name="wordWrap">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
         </widget>
        </item>
        <item>
-        <spacer name="placeholderSpacer3">
+        <widget class="ctkCollapsibleButton" name="profileCollapsibleButton">
+         <property name="collapsed">
+          <bool>false</bool>
+         </property>
+         <layout class="QVBoxLayout" name="profileCollapsibleButtonLayout">
+          <item>
+           <widget class="QPushButton" name="computeProfileButton" />
+          </item>
+          <item>
+           <widget class="QLabel" name="profilePlotLabel">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>200</height>
+             </size>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="profileLegendLabel">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="maxTitleLabel" />
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="maxRangeLayout">
+            <item>
+             <widget class="QLabel" name="maxFromLabel" />
+            </item>
+            <item>
+             <widget class="QComboBox" name="maxFromComboBox" />
+            </item>
+            <item>
+             <widget class="QLabel" name="maxToLabel" />
+            </item>
+            <item>
+             <widget class="QComboBox" name="maxToComboBox" />
+            </item>
+            <item>
+             <widget class="QPushButton" name="findMaxButton" />
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QLabel" name="maxResultLabel">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="ctkCollapsibleButton" name="markersCollapsibleButton">
+         <property name="collapsed">
+          <bool>false</bool>
+         </property>
+         <layout class="QVBoxLayout" name="markersCollapsibleButtonLayout">
+          <item>
+           <layout class="QHBoxLayout" name="markerNameLayout">
+            <item>
+             <widget class="QLabel" name="markerNameLabel" />
+            </item>
+            <item>
+             <widget class="QComboBox" name="markerNameComboBox">
+              <property name="editable">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="markerAddLayout">
+            <item>
+             <widget class="QPushButton" name="addMarkerButton" />
+            </item>
+            <item>
+             <widget class="QPushButton" name="placeMarkerByClickButton">
+              <property name="checkable">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QTableWidget" name="markersTable">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>140</height>
+             </size>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="markerButtonsLayout">
+            <item>
+             <widget class="QPushButton" name="jumpToMarkerButton" />
+            </item>
+            <item>
+             <widget class="QPushButton" name="moveMarkerButton" />
+            </item>
+            <item>
+             <widget class="QPushButton" name="deleteMarkerButton" />
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QLabel" name="distanceTitleLabel" />
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="distanceLayout">
+            <item>
+             <widget class="QLabel" name="distanceFromLabel" />
+            </item>
+            <item>
+             <widget class="QComboBox" name="distanceFromComboBox" />
+            </item>
+            <item>
+             <widget class="QLabel" name="distanceToLabel" />
+            </item>
+            <item>
+             <widget class="QComboBox" name="distanceToComboBox" />
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QLabel" name="distanceResultLabel">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="matrixTitleLabel" />
+          </item>
+          <item>
+           <widget class="QTableWidget" name="distanceMatrixTable">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>120</height>
+             </size>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="ctkCollapsibleButton" name="toolsCollapsibleButton">
+         <property name="collapsed">
+          <bool>false</bool>
+         </property>
+         <layout class="QVBoxLayout" name="toolsCollapsibleButtonLayout">
+          <item>
+           <widget class="QPushButton" name="lengthToolButton">
+            <property name="checkable">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="lengthResultLabel">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="rulerLayout">
+            <item>
+             <widget class="QPushButton" name="rulerButton" />
+            </item>
+            <item>
+             <widget class="QPushButton" name="clearRulersButton" />
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QLabel" name="rulerHintLabel">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="ctkCollapsibleButton" name="evarCollapsibleButton">
+         <property name="collapsed">
+          <bool>false</bool>
+         </property>
+         <layout class="QVBoxLayout" name="evarCollapsibleButtonLayout">
+          <item>
+           <widget class="QLabel" name="evarLabel">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="evarHintLabel">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer name="measurementsSpacer">
          <property name="orientation">
           <enum>Qt::Vertical</enum>
          </property>

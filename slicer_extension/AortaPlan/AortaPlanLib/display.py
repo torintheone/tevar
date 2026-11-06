@@ -43,10 +43,14 @@ def applyWindowLevel(volumeNode, presetKey):
     displayNode.SetWindowLevel(preset.window, preset.level)
 
 
-class ViewOverlay:
-    """Large text in the upper-right corner of a slice or 3D view (independent of Slicer's annotations)."""
+TOP_RIGHT = "top_right"
+BOTTOM_LEFT = "bottom_left"
 
-    def __init__(self, view, fontSize=22):
+
+class ViewOverlay:
+    """Large text in a corner of a slice or 3D view (independent of Slicer's annotations)."""
+
+    def __init__(self, view, fontSize=22, corner=TOP_RIGHT, color=(1.0, 0.85, 0.2)):
         self.view = view
         self.fontFile = unicodeFontFile()
         self.actor = vtk.vtkTextActor()
@@ -54,15 +58,20 @@ class ViewOverlay:
         prop.SetFontSize(fontSize)
         prop.SetBold(True)
         prop.SetShadow(True)
-        prop.SetColor(1.0, 0.85, 0.2)
-        prop.SetJustificationToRight()
-        prop.SetVerticalJustificationToTop()
+        prop.SetColor(*color)
         if self.fontFile:
             prop.SetFontFamily(vtk.VTK_FONT_FILE)
             prop.SetFontFile(self.fontFile)
         coordinate = self.actor.GetPositionCoordinate()
         coordinate.SetCoordinateSystemToNormalizedViewport()
-        coordinate.SetValue(0.98, 0.96)
+        if corner == BOTTOM_LEFT:
+            prop.SetJustificationToLeft()
+            prop.SetVerticalJustificationToBottom()
+            coordinate.SetValue(0.02, 0.04)
+        else:
+            prop.SetJustificationToRight()
+            prop.SetVerticalJustificationToTop()
+            coordinate.SetValue(0.98, 0.96)
         self.renderer = view.renderWindow().GetRenderers().GetFirstRenderer()
         self.renderer.AddActor2D(self.actor)
 

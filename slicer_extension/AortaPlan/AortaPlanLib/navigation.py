@@ -20,8 +20,10 @@ Without a centerline (or while points are placed) the views are always MPR.
 - perpendicular slice: wheel or Up/Down +-1 mm (Shift +-5 mm); dragging one of the coloured
   CPR lines rotates the CPRs;
 - 3D view: a click on the centerline jumps there;
-- Ctrl+Up/Down: +-1 mm, Ctrl+Left/Right: rotate by -+10 deg.
-In MODE_PATH Shift+mouse move does not move the slices to the crosshair.
+- Ctrl+Up/Down: +-1 mm, Ctrl+Left/Right: rotate by -+10 deg; M: place a marker (stage 4).
+In MODE_PATH Shift+mouse move does not move the slices to the crosshair. Tools may take over
+clicks in the CPR views (``cprClickHandler``), and presses on contour control points are left
+to Slicer's markups (``pressFilters``).
 """
 
 import logging
@@ -409,6 +411,15 @@ class ViewInteraction:
         self._rotating = None  # index of the CPR whose line is being dragged in the perpendicular slice
         self._crosshairBehavior = None
         self.installed = False
+        #: Called with (CPR view index, offset_mm, s_mm) for a plain left click in a CPR view
+        #: instead of moving the position; returns True if the click was used (tools, markers).
+        self.cprClickHandler = None
+        #: Callables (view name, x, y) -> True when the press belongs to Slicer (e.g. a contour
+        #: control point under the mouse): the navigation then ignores it.
+        self.pressFilters = []
+        #: Called when "M" is pressed (place a marker).
+        self.markerKeyHandler = None
+        self._lastMarkerKey = 0.0
 
     # ------------------------------------------------------------------ install
     def install(self):
@@ -457,6 +468,7 @@ class ViewInteraction:
             ("Ctrl+Down", lambda: self.navigator.step(-STEP_MM)),
             ("Ctrl+Right", lambda: self.navigator.rotate(ROTATION_STEP_DEG)),
             ("Ctrl+Left", lambda: self.navigator.rotate(-ROTATION_STEP_DEG)),
+            ("M", self._markerKey),
         ):
             shortcut = qt.QShortcut(qt.QKeySequence(sequence), mainWindow)
             shortcut.connect("activated()", callback)
@@ -591,10 +603,22 @@ class ViewInteraction:
         step = FAST_STEP_MM if interactor.GetShiftKey() else STEP_MM
         self.navigator.step(step if forward else -step)
 
+    def _markerKey(self):
+        import time
+
+        now = time.monotonic()
+        if self.markerKeyHandler is None or now - self._lastMarkerKey < 0.3:
+            return  # the shortcut and the view's own key event may both report one press
+        self._lastMarkerKey = now
+        self.markerKeyHandler()
+
     def _onKey(self, interactor, event):
         if not self.navigator.navigating or interactor.GetControlKey():
             return
         key = interactor.GetKeySym()
+        if key in ("m", "M"):
+            self._markerKey()
+            return
         step = FAST_STEP_MM if interactor.GetShiftKey() else STEP_MM
         if key == "Up":
             self.navigator.step(step)
@@ -606,6 +630,15 @@ class ViewInteraction:
         self._press[name] = (x, y)
         if not self.navigator.navigating or not self._viewTransformMode() or not self._plainClick(interactor):
             return
+        if any(test(name, x, y) for test in self.pressFilters):
+            self._press.pop(name, None)
+            return  # e.g. dragging a contour point: Slicer's markups handle it
+        if name in layout.CPR_VIEWS and self.cprClickHandler is not None and self.navigator.cpr is not None:
+            index = layout.CPR_VIEWS.index(name)
+            offset, s = self.navigator.cprViews[index].cprFromXY(x, y)
+            if self.cprClickHandler(index, offset, s):
+                self._abort(name, vtk.vtkCommand.LeftButtonPressEvent)
+                return
         if name in layout.CPR_VIEWS:
             self._scrubbing = layout.CPR_VIEWS.index(name)
             self.navigator.jumpToCprPixel(self._scrubbing, x, y)

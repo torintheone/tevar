@@ -73,6 +73,11 @@ Full specification: `SPEC.md` (Russian). Status: `PROGRESS.md`. Re-read both bef
   straight distance only as a secondary value.
 - Diameters per cross-section: min/max Feret (rotating calipers), mean, area-equivalent `2√(A/π)`,
   perimeter-equivalent `P/π`, area, perimeter — each for lumen (inner) and outer wall.
+  Mean = (min + max) / 2. Contours (stage 4, `crosssection/contours.py`): 360 rays from the lumen
+  centre in `SectionPlane` (u = image right = patient left, v = anterior); lumen = local 50 % level
+  soft tissue/contrast (+ calcium stop), outer wall = 50 % wall/thrombus (40 HU) vs fat (−100 HU);
+  outliers vs a robust Fourier fit are rejected and filled. Markers re-project their 3-D point on the
+  current path; distances between branches go through the split point.
 - C-arm: LAO/RAO = rotation about the patient's long axis (LAO = detector towards patient's left);
   CRAN/CAUD = tilt (CRAN = detector towards the head). Document the math convention in code
   (source→detector ray, signs) and test known geometries (AP = 0°/0°, LAO 90° = detector on the left…).

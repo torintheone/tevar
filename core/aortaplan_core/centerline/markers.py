@@ -53,12 +53,16 @@ ON_PATH_TOLERANCE_MM = 2.0
 
 @dataclass
 class Marker:
-    """A named point on the centerline. ``key`` is the preset key, None for a custom name."""
+    """A named point on the centerline. ``key`` is the preset key, None for a custom name.
+
+    ``arc_length_mm`` is the position on ``path`` (None when the marker is not on the path
+    being looked at).
+    """
 
     name: str
     point: np.ndarray
     path: str = ""
-    arc_length_mm: float = 0.0
+    arc_length_mm: Optional[float] = 0.0
     key: Optional[str] = None
 
     def __post_init__(self) -> None:
@@ -70,7 +74,7 @@ class Marker:
             "key": self.key,
             "point": np.round(self.point, 4).tolist(),
             "path": self.path,
-            "arc_length_mm": round(float(self.arc_length_mm), 3),
+            "arc_length_mm": None if self.arc_length_mm is None else round(float(self.arc_length_mm), 3),
         }
 
     @classmethod
@@ -79,7 +83,7 @@ class Marker:
             name=d["name"],
             point=d["point"],
             path=d.get("path", ""),
-            arc_length_mm=float(d.get("arc_length_mm", 0.0)),
+            arc_length_mm=None if d.get("arc_length_mm") is None else float(d["arc_length_mm"]),
             key=d.get("key"),
         )
 

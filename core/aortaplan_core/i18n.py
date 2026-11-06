@@ -157,6 +157,7 @@ _STRINGS: Dict[str, Dict[str, str]] = {
             "Shift+колесо ±5 мм; Ctrl+колесо — поворот CPR на ±5°; масштаб — правая кнопка. "
             "Перпендикулярный срез: колесо или ↑/↓ ±1 мм (Shift ±5 мм); потяните цветную линию — "
             "повернуть CPR. Ctrl+↑/↓: ±1 мм, Ctrl+←/→: поворот ±10°. Клик по линии в 3D — перейти. "
+            "M — маркер в текущей точке. "
             "MPR: клик переносит остальные срезы в точку; центр и линии перекрестья можно тянуть "
             "(сдвиг и поворот срезов); левая кнопка — окно/уровень, колесо — листать срез."
         ),
@@ -464,6 +465,7 @@ _STRINGS: Dict[str, Dict[str, str]] = {
             "Shift+wheel ±5 mm; Ctrl+wheel — rotate CPR by ±5°; zoom — right button. "
             "Perpendicular slice: wheel or Up/Down ±1 mm (Shift ±5 mm); drag a coloured line — rotate "
             "the CPR. Ctrl+Up/Down: ±1 mm, Ctrl+Left/Right: rotate ±10°. Click the curve in 3D to jump. "
+            "M — marker at the current point. "
             "MPR: a click moves the other slices to the point; drag the centre or the reference lines "
             "(move and rotate slices); left drag — window/level, wheel — scroll."
         ),
