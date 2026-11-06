@@ -28,8 +28,9 @@ LUMEN_HU = 350.0  # contrast-enhanced blood
 ROI_MARGIN_MM = 5.0  # tissue around the tube inside the volume
 TRUTH_STEP_MM = 0.5  # centerline sampling stored in the truth JSON
 
-# (name, hu, semi_axis_n(s), semi_axis_b(s)); s = arc length along the centerline, mm
-LayerSpec = Tuple[str, float, Callable[[np.ndarray], np.ndarray], Callable[[np.ndarray], np.ndarray]]
+# (name, hu, semi_axis_n(s), semi_axis_b(s)[, offset_n(s), offset_b(s)]);
+# s = arc length along the centerline, mm
+LayerSpec = Tuple[Any, ...]
 
 
 def _constant(value: float) -> Callable[[np.ndarray], np.ndarray]:
@@ -54,8 +55,12 @@ def build_tube_phantom(
     supersampling: int = 4,
     expected: Optional[Dict[str, Any]] = None,
     parameters: Optional[Dict[str, Any]] = None,
+    paint_extra: Optional[Callable[[np.ndarray, ImageGeometry], np.ndarray]] = None,
 ) -> Phantom:
-    """Generic tubular phantom builder; the specific phantoms below are thin wrappers."""
+    """Generic tubular phantom builder; the specific phantoms below are thin wrappers.
+
+    ``paint_extra(image, geometry)`` may add objects (calcifications, bone) before blur and noise.
+    """
     dense_step = min(0.1, min(spacing) / 7.0)
     dense = resample_polyline(np.asarray(centerline, dtype=float), dense_step)
     tangents = unit_tangents(dense)
@@ -63,11 +68,18 @@ def build_tube_phantom(
         dense, None if reference_normal is None else np.asarray(reference_normal, dtype=float), tangents
     )
     s = cumulative_arc_length(dense)
-    layers = [TubeLayer(lname, hu, fn_n(s), fn_b(s)) for lname, hu, fn_n, fn_b in layer_specs]
+    layers = []
+    for spec in layer_specs:
+        lname, hu, fn_n, fn_b = spec[:4]
+        offset_n = spec[4](s) if len(spec) > 4 and spec[4] is not None else None
+        offset_b = spec[5](s) if len(spec) > 5 and spec[5] is not None else None
+        layers.append(TubeLayer(lname, hu, fn_n(s), fn_b(s), offset_n, offset_b))
 
     geometry = ImageGeometry.covering_box(roi_min, roi_max, spacing, directions)
     fractions = rasterize_tube_fractions(geometry, dense, tangents, normals, layers, supersampling=supersampling)
     image = compose_intensity(fractions, [layer.hu for layer in layers], background_hu)
+    if paint_extra is not None:
+        image = paint_extra(image, geometry)
     image = apply_blur(image, geometry, blur_sigma_mm)
     image = add_noise(image, noise_sigma_hu, seed)
     volume = Volume(data=to_ct_int16(image), geometry=geometry)
@@ -82,7 +94,7 @@ def build_tube_phantom(
         centerline_points=dense[keep],
         centerline_tangents=tangents[keep],
         centerline_normals=normals[keep],
-        layers=[TubeLayer(layer.name, layer.hu, layer.semi_axis_n[keep], layer.semi_axis_b[keep]) for layer in layers],
+        layers=[layer.subset(keep) for layer in layers],
         expected=dict(expected or {}),
         parameters=dict(parameters or {}),
         blur_sigma_mm=blur_sigma_mm,

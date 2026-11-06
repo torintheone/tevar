@@ -152,3 +152,30 @@ def test_cli_lists_standard_phantoms(capsys):
 def test_cli_rejects_unknown_name():
     with pytest.raises(SystemExit):
         phantoms_cli(["--only", "no_such_phantom"])
+
+
+def test_aneurysm_phantom_truth_and_round_trip(tmp_path, aneurysm):
+    truth = aneurysm.truth
+    e = truth.expected
+    outer, lumen = truth.layer("outer"), truth.layer("lumen")
+    s = cumulative_arc_length(truth.centerline_points)
+    i = int(np.argmin(np.abs(s - e["max_outer_s_mm"])))
+    assert (outer.semi_axis_n[i], outer.semi_axis_b[i]) == pytest.approx((30.0, 27.0))
+    assert lumen.semi_axis_n[i] == pytest.approx(15.0)
+    assert outer.offset_b[i] == pytest.approx(0.6 * (27.0 - 15.0 - 1.5))  # thrombus thick anteriorly
+    assert lumen.is_centered and not outer.is_centered
+    neck = int(np.argmin(np.abs(s - (e["sac_start_s_mm"] - 10.0))))
+    assert outer.semi_axis_n[neck] == pytest.approx(12.5) and outer.offset_b[neck] == pytest.approx(0.0)
+    # Intensities: lumen 350, thrombus 40 and fat -100 HU at the widest section.
+    g = aneurysm.volume.geometry
+    centre = truth.centerline_points[i]
+    k = int(round(g.ras_to_ijk(centre)[2]))
+    section = aneurysm.volume.data[k].astype(float)
+    assert np.median(section[section > 250]) == pytest.approx(350, abs=10)
+    assert np.median(section[:5, :5]) == pytest.approx(-100, abs=10)
+    anterior = g.ras_to_ijk(centre + np.array([0.0, 25.0, 0.0])).round().astype(int)
+    assert aneurysm.volume.data[anterior[2], anterior[1], anterior[0]] == pytest.approx(40, abs=60)
+    save_phantom(aneurysm, tmp_path)
+    back = load_phantom(tmp_path, truth.name)
+    assert back.truth.layer("outer").offset_b == pytest.approx(outer.offset_b, abs=1e-6)
+    assert back.truth.to_dict() == truth.to_dict()

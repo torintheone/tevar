@@ -1,5 +1,6 @@
 """Synthetic phantoms: NRRD volume + JSON ground truth (see SPEC section 9)."""
 
+from .aneurysm import fusiform_aneurysm
 from .branching import aortoiliac
 from .library import STANDARD_PHANTOMS, build_tube_phantom, elliptical_tube, helix, straight_tube, torus_arc
 from .model import (
@@ -15,6 +16,7 @@ from .model import (
 __all__ = [
     "STANDARD_PHANTOMS",
     "aortoiliac",
+    "fusiform_aneurysm",
     "Phantom",
     "PhantomTruth",
     "TubeLayer",

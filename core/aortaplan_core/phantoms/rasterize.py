@@ -28,8 +28,8 @@ _CHUNK = 20000  # boundary voxels processed per batch (bounds memory use)
 def _normalized_radius(
     rel: np.ndarray, idx: np.ndarray, normals: np.ndarray, binormals: np.ndarray, layer: TubeLayer
 ) -> np.ndarray:
-    u = np.einsum("ij,ij->i", rel, normals[idx])
-    v = np.einsum("ij,ij->i", rel, binormals[idx])
+    u = np.einsum("ij,ij->i", rel, normals[idx]) - layer.offset_n[idx]
+    v = np.einsum("ij,ij->i", rel, binormals[idx]) - layer.offset_b[idx]
     return np.hypot(u / layer.semi_axis_n[idx], v / layer.semi_axis_b[idx])
 
 
@@ -72,7 +72,10 @@ def rasterize_tube_fractions(
 
     n_vox = int(np.prod(geometry.array_shape))
     half_diag = 0.5 * float(np.linalg.norm(geometry.spacing))
-    max_radius = max(float(max(layer.semi_axis_n.max(), layer.semi_axis_b.max())) for layer in layers)
+    max_radius = max(
+        float(max(layer.semi_axis_n.max(), layer.semi_axis_b.max()) + np.hypot(layer.offset_n, layer.offset_b).max())
+        for layer in layers
+    )
     max_step = float(np.max(np.linalg.norm(np.diff(pts, axis=0), axis=1))) if n_points > 1 else 0.0
     reach = max_radius + 2.0 * half_diag + max_step
     fractions = np.zeros((len(layers), n_vox), dtype=np.float32)
@@ -110,7 +113,8 @@ def rasterize_tube_fractions(
         g = _normalized_radius(rel, c_idx, normals, binormals, layer)
         min_axis = np.minimum(layer.semi_axis_n[c_idx], layer.semi_axis_b[c_idx])
         # Distance between the level set g and the boundary g = 1 is >= |g - 1| * min_axis
-        # (nested homothetic convex curves), so this band contains every boundary voxel.
+        # (nested homothetic convex curves about the ellipse centre), so this band contains
+        # every boundary voxel.
         band = (np.abs(g - 1.0) * min_axis <= half_diag * 1.05 + 1e-9) | near_end
         inside_center = (g <= 1.0) & caps
         layer_fraction = np.where(inside_center, 1.0, 0.0)

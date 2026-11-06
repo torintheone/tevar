@@ -46,13 +46,16 @@ class TubeLayer:
 
     The cross-section is an ellipse in the local frame: semi-axis ``semi_axis_n``
     along the frame normal N and ``semi_axis_b`` along the binormal B, one value per
-    centerline sample.
+    centerline sample. The ellipse centre may be shifted from the centerline by
+    ``offset_n`` (along N) and ``offset_b`` (along B), e.g. an eccentric thrombus.
     """
 
     name: str
     hu: float
     semi_axis_n: np.ndarray
     semi_axis_b: np.ndarray
+    offset_n: Optional[np.ndarray] = None
+    offset_b: Optional[np.ndarray] = None
 
     def __post_init__(self) -> None:
         self.semi_axis_n = np.asarray(self.semi_axis_n, dtype=float)
@@ -61,18 +64,48 @@ class TubeLayer:
             raise ValueError("semi-axis arrays must have the same shape")
         if np.any(self.semi_axis_n <= 0) or np.any(self.semi_axis_b <= 0):
             raise ValueError("semi-axes must be positive")
+        zeros = np.zeros_like(self.semi_axis_n)
+        self.offset_n = zeros.copy() if self.offset_n is None else np.asarray(self.offset_n, dtype=float)
+        self.offset_b = zeros.copy() if self.offset_b is None else np.asarray(self.offset_b, dtype=float)
+        if self.offset_n.shape != self.semi_axis_n.shape or self.offset_b.shape != self.semi_axis_n.shape:
+            raise ValueError("offset arrays must have the same shape as the semi-axes")
+
+    @property
+    def is_centered(self) -> bool:
+        return not (np.any(self.offset_n) or np.any(self.offset_b))
+
+    def subset(self, indices: np.ndarray) -> TubeLayer:
+        return TubeLayer(
+            self.name,
+            self.hu,
+            self.semi_axis_n[indices],
+            self.semi_axis_b[indices],
+            self.offset_n[indices],
+            self.offset_b[indices],
+        )
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        d = {
             "name": self.name,
             "hu": float(self.hu),
             "semi_axis_n_mm": np.round(self.semi_axis_n, 6).tolist(),
             "semi_axis_b_mm": np.round(self.semi_axis_b, 6).tolist(),
         }
+        if not self.is_centered:
+            d["offset_n_mm"] = np.round(self.offset_n, 6).tolist()
+            d["offset_b_mm"] = np.round(self.offset_b, 6).tolist()
+        return d
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> TubeLayer:
-        return cls(name=d["name"], hu=d["hu"], semi_axis_n=d["semi_axis_n_mm"], semi_axis_b=d["semi_axis_b_mm"])
+        return cls(
+            name=d["name"],
+            hu=d["hu"],
+            semi_axis_n=d["semi_axis_n_mm"],
+            semi_axis_b=d["semi_axis_b_mm"],
+            offset_n=d.get("offset_n_mm"),
+            offset_b=d.get("offset_b_mm"),
+        )
 
 
 @dataclass

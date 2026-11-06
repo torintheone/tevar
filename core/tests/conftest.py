@@ -67,3 +67,10 @@ def realistic_oblique():
         seed=6,
         supersampling=3,
     )
+
+
+@pytest.fixture(scope="session")
+def aneurysm():
+    from aortaplan_core.phantoms import fusiform_aneurysm
+
+    return fusiform_aneurysm()
