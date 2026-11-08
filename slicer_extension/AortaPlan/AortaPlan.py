@@ -81,10 +81,10 @@ STEP_KEYS = [
     "wizard.step.printing",
 ]
 #: Development stage (SPEC section 8) in which each placeholder step is implemented.
-PLACEHOLDER_STAGES = {4: 5, 5: 6, 6: 7, 7: 8}
+PLACEHOLDER_STAGES = {5: 6, 6: 7, 7: 8}
 PRESET_BUTTONS = {"cta": "wlCtaButton", "calcium": "wlCalciumButton", "soft_tissue": "wlSoftTissueButton", "bone": "wlBoneButton"}
-STEP_STUDY, STEP_CENTERLINE, STEP_MEASUREMENTS = 0, 1, 2
-DEVELOPMENT_STAGE = 4  # last implemented stage of SPEC section 8, shown under the disclaimer
+STEP_STUDY, STEP_CENTERLINE, STEP_MEASUREMENTS, STEP_OSTIA = 0, 1, 2, 3
+DEVELOPMENT_STAGE = 5  # last implemented stage of SPEC section 8, shown under the disclaimer
 
 
 #
@@ -111,6 +111,9 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._rebuildAfterPlacement = False
         self.measurements = None
         self.measurementsPanel = None
+        self.ostia = None
+        self.ostiaPanel = None
+        self._lastPath = None
 
     # ------------------------------------------------------------------ setup
     def setup(self):
@@ -296,6 +299,11 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         )
         self.interaction.pressFilters.append(self.measurements.isOverContourPoint)
         self.interaction.markerKeyHandler = self.measurementsPanel.onMarkerKey
+        from AortaPlanLib.ostia import OstiaController
+        from AortaPlanLib.ostiaui import OstiaPanel
+
+        self.ostia = OstiaController(self.navigator, self.measurements)
+        self.ostiaPanel = OstiaPanel(self.ui, self.ostia, self.navigator, self._createProgress)
 
     def _persistMeasurements(self, text):
         if self._parameterNode is not None:
@@ -324,6 +332,8 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._deactivateViews()
         if self.appMode is not None:
             self.appMode.setEnabled(False)
+        if self.ostia is not None:
+            self.ostia.cleanup()
         if self.measurements is not None:
             self.measurements.cleanup()
         if self.navigator is not None:
@@ -360,6 +370,8 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.setViewMode(self._parameterNode.viewMode if self._parameterNode else "path")
         self.dragSwapper.install()
         self.measurementsPanel.setVisible(self.ui.stepStack.currentIndex == STEP_MEASUREMENTS)
+        self.ostia.refresh()
+        self.ostiaPanel.setVisible(self.ui.stepStack.currentIndex == STEP_OSTIA)
 
     def _onLayoutRebuilt(self):
         """The views were re-arranged: re-attach the interaction, overlays and title-bar dragging."""
@@ -380,6 +392,8 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if self.segmentEditor is not None:
             self.segmentEditor.setActiveEffect(None)
         self.measurementsPanel.setVisible(False)
+        self.ostiaPanel.setVisible(False)
+        self.ostia.stopClicksQuietly()
         self.measurements.detachOverlay()
         self.dragSwapper.uninstall()
         self.interaction.uninstall()
@@ -388,6 +402,7 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.layoutController.deactivate()
 
     def onSceneStartClose(self, caller, event):
+        self.ostia.reset()
         self.measurements.reset()
         self.navigator.reset()
         self.setParameterNode(None)
@@ -420,6 +435,7 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.navigator.angle = parameterNode.cprAngleDeg
         self.navigator.position = parameterNode.positionMm
         self.measurements.loadJson(parameterNode.measurementsJson)
+        self.ostia.refresh()
         self._updateVolumeInfo()
         self._updateCurveInfo()
         self._updatePointsInfo()
@@ -435,6 +451,7 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self._parameterNode.currentStep = index
         if self.measurementsPanel is not None and self._active:
             self.measurementsPanel.setVisible(index == STEP_MEASUREMENTS)
+            self.ostiaPanel.setVisible(index == STEP_OSTIA)
         self._updateButtons()
 
     def _updateButtons(self):
@@ -619,6 +636,8 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             if self._rebuildAfterPlacement:
                 self._rebuildAfterPlacement = False
                 self.onBuild()
+            if self.ostiaPanel is not None:
+                self.ostiaPanel.onInteractionModeChanged()
         if self.navigator.frozen and not self._isDrawing():
             self.navigator.setFrozen(False)
             self.interaction.updateBrowsing()
@@ -843,6 +862,12 @@ class AortaPlanWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if self._parameterNode is not None and path is not None:
             self._parameterNode.positionMm = self.navigator.position
             self._parameterNode.cprAngleDeg = self.navigator.angle
+        if self.ostia is not None:
+            if path is not self._lastPath:
+                self._lastPath = path
+                self.ostia.onPathChanged()
+            else:
+                self.ostia.onNavigationChanged()
         if self.measurements is not None:
             self.measurements.onNavigationChanged()
             if self.measurementsPanel.visible:

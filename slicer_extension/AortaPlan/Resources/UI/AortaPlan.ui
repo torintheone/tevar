@@ -723,17 +723,203 @@
        </item>
       </layout>
      </widget>
-     <widget class="QWidget" name="placeholderPage4">
-      <layout class="QVBoxLayout" name="placeholderLayout4">
+     <widget class="QWidget" name="ostiaPage">
+      <layout class="QVBoxLayout" name="ostiaPageLayout">
        <item>
-        <widget class="QLabel" name="placeholderLabel4">
-         <property name="wordWrap">
-          <bool>true</bool>
+        <widget class="ctkCollapsibleButton" name="ostiaCollapsibleButton">
+         <property name="collapsed">
+          <bool>false</bool>
          </property>
+         <layout class="QVBoxLayout" name="ostiaCollapsibleButtonLayout">
+          <item>
+           <layout class="QHBoxLayout" name="ostiaFindLayout">
+            <item>
+             <widget class="QPushButton" name="findOstiaButton" />
+            </item>
+            <item>
+             <widget class="QPushButton" name="addOstiumButton">
+              <property name="checkable">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QLabel" name="ostiaStatusLabel">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QWidget" name="ostiaSettingsWidget">
+            <layout class="QFormLayout" name="ostiaSettingsLayout">
+             <item row="0" column="0">
+              <widget class="QLabel" name="ostiaReferenceLabel" />
+             </item>
+             <item row="0" column="1">
+              <widget class="QComboBox" name="ostiaReferenceComboBox" />
+             </item>
+             <item row="1" column="0">
+              <widget class="QLabel" name="ostiaClockModeLabel" />
+             </item>
+             <item row="1" column="1">
+              <widget class="QComboBox" name="ostiaClockModeComboBox" />
+             </item>
+             <item row="2" column="0">
+              <widget class="QLabel" name="ostiaGraftLabel" />
+             </item>
+             <item row="2" column="1">
+              <widget class="QDoubleSpinBox" name="ostiaGraftSpinBox">
+               <property name="decimals">
+                <number>1</number>
+               </property>
+               <property name="minimum">
+                <double>10.0</double>
+               </property>
+               <property name="maximum">
+                <double>60.0</double>
+               </property>
+               <property name="singleStep">
+                <double>1.0</double>
+               </property>
+               <property name="value">
+                <double>28.0</double>
+               </property>
+              </widget>
+             </item>
+             <item row="3" column="0">
+              <widget class="QLabel" name="ostiaDistanceLabel" />
+             </item>
+             <item row="3" column="1">
+              <widget class="QDoubleSpinBox" name="ostiaDistanceSpinBox">
+               <property name="decimals">
+                <number>1</number>
+               </property>
+               <property name="minimum">
+                <double>1.0</double>
+               </property>
+               <property name="maximum">
+                <double>30.0</double>
+               </property>
+               <property name="singleStep">
+                <double>1.0</double>
+               </property>
+               <property name="value">
+                <double>5.0</double>
+               </property>
+              </widget>
+             </item>
+             <item row="4" column="0">
+              <widget class="QLabel" name="ostiaMinBranchLabel" />
+             </item>
+             <item row="4" column="1">
+              <widget class="QDoubleSpinBox" name="ostiaMinBranchSpinBox">
+               <property name="decimals">
+                <number>1</number>
+               </property>
+               <property name="minimum">
+                <double>1.5</double>
+               </property>
+               <property name="maximum">
+                <double>10.0</double>
+               </property>
+               <property name="singleStep">
+                <double>0.5</double>
+               </property>
+               <property name="value">
+                <double>2.5</double>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <widget class="QTableWidget" name="ostiaTable">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>220</height>
+             </size>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="ostiaNameLayout">
+            <item>
+             <widget class="QLabel" name="ostiumNameLabel" />
+            </item>
+            <item>
+             <widget class="QComboBox" name="ostiumNameComboBox">
+              <property name="editable">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="renameOstiumButton" />
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="ostiaButtonsLayout">
+            <item>
+             <widget class="QPushButton" name="jumpToOstiumButton" />
+            </item>
+            <item>
+             <widget class="QPushButton" name="confirmAllOstiaButton" />
+            </item>
+            <item>
+             <widget class="QPushButton" name="deleteOstiumButton" />
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QPushButton" name="markersFromOstiaButton" />
+          </item>
+          <item>
+           <widget class="QLabel" name="ostiaHelpLabel">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
         </widget>
        </item>
        <item>
-        <spacer name="placeholderSpacer4">
+        <widget class="ctkCollapsibleButton" name="zonesCollapsibleButton">
+         <property name="collapsed">
+          <bool>true</bool>
+         </property>
+         <layout class="QVBoxLayout" name="zonesCollapsibleButtonLayout">
+          <item>
+           <widget class="QTableWidget" name="zonesTable">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>170</height>
+             </size>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="computeZonesButton" />
+          </item>
+          <item>
+           <widget class="QLabel" name="zonesHintLabel">
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer name="ostiaSpacer">
          <property name="orientation">
           <enum>Qt::Vertical</enum>
          </property>

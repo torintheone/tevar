@@ -1055,3 +1055,191 @@ class AortaPlanMeasurementGuiTests(unittest.TestCase):
         perFrame = (time.perf_counter() - start) / len(positions)
         METRICS["live contours: update + render per section, ms"] = round(perFrame * 1000, 1)
         self.assertLess(perFrame, 0.25)
+
+
+# ---------------------------------------------------------------------------- stage 5
+
+_OSTIA_PHANTOMS = {}
+
+
+def _ostiaPhantom(name):
+    if name not in _OSTIA_PHANTOMS:
+        from aortaplan_core.phantoms import aortic_arch, visceral_aorta
+
+        _OSTIA_PHANTOMS[name] = visceral_aorta() if name == "visceral" else aortic_arch()
+    return _OSTIA_PHANTOMS[name]
+
+
+def _ostiaSetup(name="visceral"):
+    from AortaPlanLib.bridge import volumeToNode
+    from AortaPlanLib.measurements import MeasurementController
+    from AortaPlanLib.navigation import SliceNavigator
+    from AortaPlanLib.ostia import OstiaController
+
+    phantom = _ostiaPhantom(name)
+    volume = volumeToNode(phantom.volume, name)
+    curve = _curveFromPoints(phantom.truth.centerline_points, name="AortaCurve", every=16)
+    navigator = SliceNavigator()
+    navigator.setVolume(volume)
+    navigator.setCurve(curve)
+    measurements = MeasurementController(navigator)
+    saved = []
+    measurements.persist = saved.append
+    return phantom, navigator, measurements, OstiaController(navigator, measurements), saved
+
+
+class AortaPlanOstiaTests(unittest.TestCase):
+    """Stage 5 in Slicer (no main window needed)."""
+
+    def setUp(self):
+        slicer.mrmlScene.Clear(0)
+
+    def tearDown(self):
+        slicer.mrmlScene.Clear(0)
+
+    def test_find_ostia_clock_and_distances(self):
+        import time
+
+        from aortaplan_core.ostia import describe
+
+        phantom, navigator, measurements, controller, saved = _ostiaSetup()
+        start = time.perf_counter()
+        controller.find()
+        METRICS["ostia: search time on the visceral phantom, s"] = round(time.perf_counter() - start, 2)
+        keys = [o.key for _, o, _ in controller.rows()]
+        self.assertEqual(keys, ["celiac", "sma", "right_renal", "left_renal", "accessory_renal_right", "ima"])
+        truth = {t["key"]: t for t in phantom.truth.expected["ostia"]}
+        rows = controller.rows()
+        ref_s = rows[0][2].arc_length_mm
+        worst_clock = worst_distance = 0.0
+        for _, o, position in rows:
+            t = truth[o.key if o.key != "accessory_renal_right" else "accessory_renal"]
+            clock_error = abs((position.clock_deg - t["clock_deg"]["anterior"] + 180.0) % 360.0 - 180.0)
+            distance_error = abs((position.arc_length_mm - ref_s) - (t["arc_length_mm"] - truth["celiac"]["arc_length_mm"]))
+            worst_clock, worst_distance = max(worst_clock, clock_error), max(worst_distance, distance_error)
+        METRICS["ostia in Slicer: worst clock error, deg / distance error, mm"] = f"{worst_clock:.2f} / {worst_distance:.2f}"
+        self.assertLessEqual(worst_clock, 5.0)
+        self.assertLessEqual(worst_distance, 1.0)
+        # Display: points with names, branch lines, ticks on both CPRs.
+        node = controller.ostiaNode(create=False)
+        self.assertEqual(node.GetNumberOfControlPoints(), 6)
+        self.assertTrue(node.GetNthControlPointLabel(0).endswith("?"))  # not confirmed yet
+        self.assertEqual(controller.branchesNode(create=False).GetPolyData().GetNumberOfCells(), 6)
+        for view in navigator.cprViews:
+            self.assertEqual(controller.tickNode(view, create=False).GetNumberOfControlPoints(), 6)
+        # Jump: position at the ostium, the first CPR shows the branch.
+        index = rows[2][0]
+        controller.jump(index)
+        ostium = controller.ostia[index]
+        self.assertAlmostEqual(navigator.position, describe(ostium, navigator.path).arc_length_mm, places=3)
+        _, _, outOfPlane = navigator.cpr.from_ras(ostium.branch_points[6], navigator.angle)
+        self.assertLess(abs(outOfPlane), 0.5)
+        hand = controller.clockHandNode(create=False)
+        self.assertTrue(hand.GetDisplayNode().GetVisibility())
+        self.assertIn(rows[2][2].clock, hand.GetName())
+
+    def test_edit_markers_manual_and_persistence(self):
+        from aortaplan_core.crosssection import MeasurementStore
+        from aortaplan_core.i18n import tr
+
+        phantom, navigator, measurements, controller, saved = _ostiaSetup()
+        controller.find()
+        rows = controller.rows()
+        controller.rename(rows[1][0], "Моя ВБА")
+        self.assertTrue(controller.ostia[rows[1][0]].confirmed)
+        self.assertIsNone(controller.ostia[rows[1][0]].key)  # custom name
+        controller.rename(rows[1][0], tr("ostium.sma"))
+        self.assertEqual(controller.ostia[rows[1][0]].key, "sma")
+        controller.setStenosis(rows[2][0], True)
+        controller.confirmAll()
+        self.assertTrue(all(o.confirmed for o in controller.ostia))
+        # Markers of step 3 from the ostia (lowest renal = distal edge of the lower renal ostium).
+        self.assertEqual(controller.markersFromOstia(), 5)
+        names = {m.key: m.arc_length_mm for m in measurements.markers()}
+        self.assertGreater(names["lowest_renal"], names["left_renal"])
+        # A manual ostium from two clicks (the second in the branch); the clicked point snaps to the wall.
+        truth = {t["key"]: t for t in phantom.truth.expected["ostia"]}["left_renal"]
+        controller.delete(next(i for i, o, _ in controller.rows() if o.key == "left_renal"))
+        controller.startClicks()
+        clicks = controller.clicksNode(create=False)
+        centre = np.asarray(truth["center"])
+        clicks.AddControlPoint(*centre, "")
+        clicks.AddControlPoint(*(centre + 15.0 * np.asarray(truth["direction"])), "")
+        controller.finishClicks()
+        manual = [o for o in controller.ostia if o.source == "manual"]
+        self.assertEqual(len(manual), 1)
+        self.assertEqual(manual[0].key, "left_renal")
+        self.assertFalse(manual[0].confirmed)
+        interaction = slicer.app.applicationLogic().GetInteractionNode()
+        self.assertEqual(interaction.GetCurrentInteractionMode(), interaction.ViewTransform)
+        # Settings and ostia are saved in the measurement JSON.
+        controller.setSetting("clock_mode", "greater_curvature")
+        controller.setSetting("graft_diameter_mm", 30.0)
+        store = MeasurementStore.from_json(saved[-1])
+        self.assertEqual(len(store.ostia), 6)
+        self.assertEqual(store.ostia_settings["clock_mode"], "greater_curvature")
+        self.assertTrue(any(o.stenosis for o in store.ostia))
+        # A new search keeps the confirmed and manual ostia.
+        controller.find()
+        self.assertEqual(len(controller.ostia), 6)
+        self.assertTrue(any(o.source == "manual" for o in controller.ostia))
+
+    def test_arch_zones(self):
+        phantom, navigator, measurements, controller, saved = _ostiaSetup("arch")
+        controller.find()
+        self.assertEqual([o.key for _, o, _ in controller.rows()], ["bca", "lcca", "lsa"])
+        zones = controller.computeZones(withDiameters=True)
+        self.assertEqual([z.name for z in zones], ["0", "1", "2", "3", "4"])
+        self.assertAlmostEqual(zones[3].length_mm, 20.0, places=3)
+        self.assertAlmostEqual(zones[1].diameters["lumen_min_mm"], 28.0, delta=0.5)
+        controller.setSetting("clock_mode", "greater_curvature")
+        clocks = [p.clock for _, _, p in controller.rows()]
+        self.assertTrue(clocks[0].startswith("11:") and clocks[2].startswith("12:"), clocks)
+
+
+@unittest.skipIf(slicer.util.mainWindow() is None, "the module GUI needs the main window (--slicer-gui)")
+class AortaPlanOstiaGuiTests(unittest.TestCase):
+    def setUp(self):
+        slicer.mrmlScene.Clear(0)
+
+    def tearDown(self):
+        slicer.util.selectModule("Welcome")
+        slicer.mrmlScene.Clear(0)
+
+    def test_ostia_step(self):
+        from AortaPlanLib.bridge import volumeToNode
+
+        slicer.util.selectModule("AortaPlan")
+        widget = slicer.modules.aortaplan.widgetRepresentation().self()
+        phantom = _ostiaPhantom("visceral")
+        volume = volumeToNode(phantom.volume, "visceral")
+        widget.ui.volumeSelector.setCurrentNode(volume)
+        widget.ui.curveSelector.setCurrentNode(_curveFromPoints(phantom.truth.centerline_points, name="AortaCurve", every=16))
+        widget.setCurrentStep(3)
+        ui = widget.ui
+        self.assertTrue(widget.ostiaPanel.visible)
+        ui.findOstiaButton.click()
+        self.assertEqual(ui.ostiaTable.rowCount, 6)
+        self.assertEqual(ui.ostiaTable.item(0, 4).text(), "12:00")  # celiac at 12:00
+        # Confirm by the check box, rename from the list, stenosis.
+        ui.ostiaTable.item(0, 1).setCheckState(qt.Qt.Checked)
+        self.assertTrue(widget.ostia.ostia[widget.ostiaPanel._storeIndex(0)].confirmed)
+        ui.ostiaTable.selectRow(1)
+        ui.ostiumNameComboBox.setCurrentText("Моя ветвь")
+        ui.renameOstiumButton.click()
+        self.assertEqual(ui.ostiaTable.item(1, 0).text(), "Моя ветвь")
+        # Double click: go to the ostium.
+        widget.ostiaPanel.controller.jump(widget.ostiaPanel._storeIndex(2))
+        self.assertAlmostEqual(widget.navigator.position, widget.ostia.rows()[2][2].arc_length_mm, places=3)
+        # Reference marker and markers from ostia.
+        ui.markersFromOstiaButton.click()
+        self.assertGreaterEqual(ui.ostiaReferenceComboBox.count, 5)
+        ui.ostiaReferenceComboBox.currentIndex = 1  # the first marker: celiac
+        self.assertEqual(ui.ostiaTable.item(0, 2).text(), "0,0")
+        # Manual ostium: the button starts the placement mode, releasing it after one click finishes.
+        ui.addOstiumButton.checked = True
+        interaction = slicer.app.applicationLogic().GetInteractionNode()
+        self.assertEqual(interaction.GetCurrentInteractionMode(), interaction.Place)
+        ui.addOstiumButton.checked = False
+        self.assertEqual(interaction.GetCurrentInteractionMode(), interaction.ViewTransform)
+        self.assertIn('"ostia"', widget._parameterNode.measurementsJson)

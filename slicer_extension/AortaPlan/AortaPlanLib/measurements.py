@@ -70,7 +70,10 @@ def formatNumber(value, digits=1):
     """Russian-style decimal comma for display."""
     if value is None or not np.isfinite(value):
         return "—"
-    return f"{value:.{digits}f}".replace(".", ",")
+    text = f"{value:.{digits}f}"
+    if text.startswith("-") and float(text) == 0.0:
+        text = text[1:]  # no "-0"
+    return text.replace(".", ",")
 
 
 def pathKey(curveNode):

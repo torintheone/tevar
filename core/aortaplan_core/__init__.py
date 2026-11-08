@@ -8,6 +8,6 @@ Rules (see CLAUDE.md):
 For research use only. Not for clinical decision making.
 """
 
-__version__ = "0.4.0"  # stage 4: measurements on sections
+__version__ = "0.5.0"  # stage 5: ostia
 
 __all__ = ["__version__"]

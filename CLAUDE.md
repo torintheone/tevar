@@ -78,6 +78,11 @@ Full specification: `SPEC.md` (Russian). Status: `PROGRESS.md`. Re-read both bef
   soft tissue/contrast (+ calcium stop), outer wall = 50 % wall/thrombus (40 HU) vs fat (−100 HU);
   outliers vs a robust Fourier fit are rejected and filled. Markers re-project their 3-D point on the
   current path; distances between branches go through the split point.
+- Ostia (stage 5, `ostia/`): aortic surface without branches = stacked stage-4 contours with strict ray
+  rejection (`ostia/tube.py`); stumps = contrast voxels in a 15 mm shell outside it; ostium = crossing of
+  the traced branch line with that surface. Position and clock frame use the locally smoothed axis
+  (`CurvePath.foot_arc_length`, σ 10 mm). Greater-curvature mode: 12:00 away from the centre of curvature,
+  3:00 towards the patient's left. Craniocaudal angle = to the distal aortic axis (90° perpendicular).
 - C-arm: LAO/RAO = rotation about the patient's long axis (LAO = detector towards patient's left);
   CRAN/CAUD = tilt (CRAN = detector towards the head). Document the math convention in code
   (source→detector ray, signs) and test known geometries (AP = 0°/0°, LAO 90° = detector on the left…).
