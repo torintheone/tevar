@@ -12,7 +12,8 @@ be passed to VMTK Extract Centerline. Steps:
 4. Sub-voxel recentering: in the plane perpendicular to the path, rays find the lumen
    boundary at the half-maximum level (linear interpolation of the CT values) and a circle
    fitted to the boundary points gives the centre. Rays that escape into a side branch are
-   rejected as outliers. Repeated a few times with smoothing.
+   rejected as outliers (strictly, against a smooth fit of the radii). Repeated a few times
+   with smoothing; small backward steps (loops) are removed.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ import numpy as np
 from scipy import ndimage, sparse
 from scipy.sparse.csgraph import dijkstra
 
+from ..crosssection.contours import ContourParameters, regularize_radii
 from ..geometry.curves import cumulative_arc_length, resample_polyline, unit_tangents
 from ..geometry.frames import rotation_minimizing_frames
 from ..lumen.segmentation import Cancelled, LumenResult
@@ -246,6 +248,25 @@ def _fit_circle(x: np.ndarray, y: np.ndarray):
     return a, b, math.sqrt(max(c + a * a + b * b, 0.0))
 
 
+def remove_folds(points: np.ndarray, smoothing_samples: float = 6.0) -> np.ndarray:
+    """Drop points that step backwards along the curve (small loops left by recentering)."""
+    pts = np.asarray(points, dtype=float)
+    for _ in range(10):
+        if len(pts) < 5:
+            break
+        reference = unit_tangents(ndimage.gaussian_filter1d(pts, smoothing_samples, axis=0, mode="nearest"))
+        steps = np.diff(pts, axis=0)
+        progress = np.einsum("ij,ij->i", steps, reference[1:])
+        median_step = float(np.median(np.linalg.norm(steps, axis=1)))
+        backwards = progress <= 0.2 * median_step
+        backwards[-1] = False  # keep the end point
+        if not backwards.any():
+            break
+        keep = np.concatenate([[True], ~backwards])
+        pts = pts[keep]
+    return pts
+
+
 def recenter(
     volume: Volume,
     points: np.ndarray,
@@ -262,6 +283,10 @@ def recenter(
     new_points = points.copy()
     estimates = depth_mm.copy()
     moved = 0
+    strict = ContourParameters(
+        n_rays=params.refine_rays, outlier_mm=1.5, outlier_fraction=0.1, guard_deg=12.0, smoothing_deg=0.0,
+        min_valid_fraction=params.min_valid_ray_fraction,
+    )
     for i in range(len(points)):
         r = radii[i]
         valid = np.isfinite(r)
@@ -271,6 +296,12 @@ def recenter(
         valid &= r <= params.outlier_radius_factor * median
         if valid.sum() < params.min_valid_ray_fraction * len(r):
             continue
+        # Strict rejection of rays escaping into a branch ostium (against a smooth fit, with a
+        # guard ray on each side), as for the section contours: a wide ostium (e.g. LSA, BCT)
+        # must not pull the centre towards it.
+        _, kept = regularize_radii(angles, np.where(valid, r, np.nan), strict, two_sided=False)
+        if kept.sum() >= params.min_valid_ray_fraction * len(r):
+            valid = kept
         x, y = r[valid] * np.cos(angles[valid]), r[valid] * np.sin(angles[valid])
         a, b, radius = _fit_circle(x, y)
         shift = math.hypot(a, b)
@@ -351,7 +382,7 @@ def extract_centerlines(
         radii = _sample_depth(depth, geometry, points)
         for _ in range(params.refine_iterations):
             points, radii, _ = recenter(volume, points, lumen.hu_range[0], radii, params)
-            points = _smooth(points, 0.5 * params.smoothing_sigma_mm, params.output_step_mm)
+            points = _smooth(remove_folds(points), 0.5 * params.smoothing_sigma_mm, params.output_step_mm)
             radii = _resample_like(radii, len(points))
         name = end_names[n_end] if end_names and n_end < len(end_names) else f"end_{n_end + 1}"
         network.paths.append(

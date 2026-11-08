@@ -1,4 +1,4 @@
-"""Saved section measurements and markers of a study, serialisable to JSON.
+"""Saved section measurements, markers and ostia of a study, serialisable to JSON.
 
 The Slicer module keeps one :class:`MeasurementStore` per scene (stage 9 will add it to
 the session file); the report (stage 7) reads it.
@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 from ..centerline.markers import Marker
 from .contours import SectionMeasurement
 
-STORE_SCHEMA_VERSION = 1
+STORE_SCHEMA_VERSION = 2  # 2: ostia and their settings
 SAME_SECTION_MM = 0.25  # a saved measurement is shown again within this distance along the line
 
 
@@ -42,6 +42,8 @@ class SavedMeasurement:
 class MeasurementStore:
     measurements: List[SavedMeasurement] = field(default_factory=list)
     markers: List[Marker] = field(default_factory=list)
+    ostia: List[Any] = field(default_factory=list)  # aortaplan_core.ostia.model.Ostium
+    ostia_settings: Dict[str, Any] = field(default_factory=dict)
 
     def find(self, path: str, s: float, tolerance_mm: float = SAME_SECTION_MM) -> Optional[int]:
         """Index of the saved measurement at this position of this path, if any."""
@@ -70,15 +72,21 @@ class MeasurementStore:
             "coordinate_system": "RAS",
             "measurements": [m.to_dict() for m in self.measurements],
             "markers": [m.to_dict() for m in self.markers],
+            "ostia": [o.to_dict() for o in self.ostia],
+            "ostia_settings": dict(self.ostia_settings),
         }
 
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> MeasurementStore:
-        if d.get("schema_version", STORE_SCHEMA_VERSION) != STORE_SCHEMA_VERSION:
+        from ..ostia.model import Ostium
+
+        if d.get("schema_version", STORE_SCHEMA_VERSION) not in (1, STORE_SCHEMA_VERSION):
             raise ValueError(f"unsupported measurement schema version {d.get('schema_version')}")
         return cls(
             measurements=[SavedMeasurement.from_dict(x) for x in d.get("measurements", [])],
             markers=[Marker.from_dict(x) for x in d.get("markers", [])],
+            ostia=[Ostium.from_dict(x) for x in d.get("ostia", [])],
+            ostia_settings=dict(d.get("ostia_settings", {})),
         )
 
     def to_json(self) -> str:

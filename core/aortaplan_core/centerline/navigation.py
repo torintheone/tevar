@@ -241,6 +241,47 @@ class CurvePath:
             return None
         return float(self.arc_length[i]), float(dist[i])
 
+    def smoothed(self, sigma_mm: float = 10.0) -> CurvePath:
+        """Copy with the points smoothed along the curve (Gaussian, ends kept); cached."""
+        cache = self.__dict__.setdefault("_smoothed_cache", {})
+        key = round(float(sigma_mm), 3)
+        if key not in cache:
+            from scipy import ndimage
+
+            step = float(np.median(np.diff(self.arc_length)))
+            pts = self.points
+            if sigma_mm > 0 and len(pts) >= 5:
+                smooth = ndimage.gaussian_filter1d(pts, sigma_mm / step, axis=0, mode="nearest")
+                weight = np.clip(np.minimum(self.arc_length, self.length - self.arc_length) / (2.0 * sigma_mm), 0.0, 1.0)
+                pts = weight[:, np.newaxis] * smooth + (1.0 - weight[:, np.newaxis]) * pts
+            cache[key] = CurvePath(pts, step_mm=step)
+        return cache[key]
+
+    def foot_arc_length(self, point: np.ndarray, sigma_mm: float = 10.0) -> Tuple[float, float]:
+        """Axial position of a point off the centerline (e.g. on the wall).
+
+        The plane perpendicular to the locally smoothed axis through the point meets the
+        axis at the foot point; returns ``(arc length on the smoothed curve, arc length of
+        the foot point on this curve)``. Unlike the nearest point, this does not jump when the
+        centerline bends slightly towards a branch ostium.
+        """
+        smooth = self.smoothed(sigma_mm)
+        p = np.asarray(point, dtype=float)
+        s, _ = smooth.nearest_arc_length(p)
+        h = 0.05
+        for _ in range(10):
+            value = float(np.dot(p - smooth.point_at(s), smooth.tangent_at(s)))
+            if abs(value) < 1e-9:
+                break
+            derivative = (
+                float(np.dot(p - smooth.point_at(s + h), smooth.tangent_at(s + h)))
+                - float(np.dot(p - smooth.point_at(s - h), smooth.tangent_at(s - h)))
+            ) / (2 * h)
+            if abs(derivative) < 1e-6:
+                break
+            s = smooth.clamp(s - value / derivative)
+        return s, self.nearest_arc_length(smooth.point_at(s))[0]
+
     def frames_continuity(self, step_mm: Optional[float] = None) -> np.ndarray:
         """Angles (deg) between screen-up vectors of consecutive cross-sections (diagnostics/tests)."""
         step = step_mm or float(np.median(np.diff(self.arc_length)))

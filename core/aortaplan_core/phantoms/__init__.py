@@ -12,9 +12,11 @@ from .model import (
     phantom_paths,
     save_phantom,
 )
+from .ostia import aortic_arch, visceral_aorta
 
 __all__ = [
     "STANDARD_PHANTOMS",
+    "aortic_arch",
     "aortoiliac",
     "fusiform_aneurysm",
     "Phantom",
@@ -29,4 +31,5 @@ __all__ = [
     "save_phantom",
     "straight_tube",
     "torus_arc",
+    "visceral_aorta",
 ]
